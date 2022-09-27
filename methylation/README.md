@@ -2,11 +2,11 @@
 
 Genome assemblies and raw bisulfite sequencing reads were downloaded for the following taxa: 
 
-| Taxon                 | Lineage   | Annotation |References |
-| --------------------- | --------- | -------------- |------|
-| <i>Arabidopsis thaliana  | Eudicot   | TAIR10.1 | Hsieh et al. 2016, Halter et al. 2021 |
-| <i>Marchantia polymorpha | Liverwort | v3.1 | Schmid et al. 2018 |
-| <i>Oryza sativa          | Monocot   | v7.0 | Kim et al. 2019, Cui et al. 2021 |
+| Taxon                    | Lineage   | Annotation     | Accession (Gametophyte/Sporophyte) |References                             | 
+| ------------------------ | --------- | -------------- |----------------------------------- | --------------------------------------|
+| <i>Arabidopsis thaliana  | Eudicot   | TAIR10.1       | SRR516180/SRR12737894-5            | Hsieh et al. 2016, Halter et al. 2021 |
+| <i>Marchantia polymorpha | Liverwort | v3.1           | SRR5314027-38/SRR5314015-20        | Schmid et al. 2018                    |
+| <i>Oryza sativa          | Monocot   | v7.0           | SRR8594859/SRR9637033-6            | Kim et al. 2019, Cui et al. 2021      |
   
 Raw reads were trimmed with Trimmomatic v0.39. Most reads were PE, but some were SE and the command was adjusted as needed. 
 ```

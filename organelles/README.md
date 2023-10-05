@@ -20,3 +20,5 @@ perl PGA.pl -r plastomes/ -t Lygodium_microphyllum_plastome.fasta
 ```
 
 <b>Mitochondria</b>
+
+The mitochondrial genome was assembled using a modified script from (Syme et al. 2021) -- see `assembler.sh`. This pipeline uses a baited iterative approach using both long and short read data and first extracts putative mitochondrial reads from the Nanopore data using minimap2 v2.24 and filters for the longest reads up to 250x coverage with filtlong. As the starting seed, we used several mitochondrial sequences from Lygodium spp. downloaded from GenBank. An initial assembly with flye v2.9.2 is generated and polished with the extracted Nanopore reads using racon v1.4.13. Illumina reads that map to the assembly are extracted from the total dataset, downsampled to at most 250x coverage with rasusa v0.7.0 (Hall 2022), mapped with bwa v0.7.17, and used to polish the assembly twice with pilon v1.24.

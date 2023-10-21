@@ -1,3 +1,16 @@
+# Genome Size Estimation 
+
+Short read data were used to estimate the genome size of <i>Lygodium microphyllum</i>. We first generated frequency distributions of kmers ranging from 17mers to 61mers with Jellyfish v2.3.0. 
+```
+jellyfish count -C -o 17mer_reads_10202021.jf -m 17 -s 8G -t 200 *.fq 
+jellyfish histo -t 10 17mer_reads_10202021.jf > 17mer_reads.histo
+```
+A model-based approach was implemented in GenomeScope v2.0 to estimate genome size. 
+```
+genomescope.R -i 17mer_reads.histo -o genomescope_out -k 17
+```
+A secondary approach was implemented using a custom R script (see `estimate_genome_size_kmers.R`). 
+
 # Assembly 
 
 Oxford Nanopore data was basecalled with super-acuracy mode either in MinKnow during data collection with guppy or with dorado v0.3.3.

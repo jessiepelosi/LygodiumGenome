@@ -31,3 +31,20 @@ pilon --genome assembly.medaka1.fasta --frags assembly.medaka1.fasta.mapped.bam 
 ```
 
 The draft assembly was then scaffolded with HiC data. 
+
+# Annotation
+
+## Repeat Annotation
+
+## Protein Evidence 
+
+## Transcript Evidence 
+Trinity v 2.12 was used to generate <i>de novo</i> and genome-guided transcriptome assemblies: 
+```
+Trinity --CPU 16 --SS_lib_type RF --output ${out} --seqType fq --left ${leftReads} --right ${rightReads}
+Trinity --CPU 16 --SS_lib_type RF --output ${out} --genome_guided_bam ${bam} --genome_guided_max_intron 100000 --max_memory 50G
+```
+
+Stringtie 
+
+Mikado 

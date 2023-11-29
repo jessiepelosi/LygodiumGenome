@@ -36,9 +36,25 @@ The draft assembly was then scaffolded with HiC data.
 
 ## Repeat Annotation
 
+EDTA v was used to mask and annotate repeats in the genome. We split the initial identification of repeats in the "raw" script to run these in parallel, and then combined them within the main script. 
+```
+perl EDTA_raw.pl --genome ${genome} --species others --type ltr -t 64
+perl EDTA_raw.pl --genome ${genome} --species others --type tir -t 64
+perl EDTA_raw.pl --genome ${genome} --species others --type helitron -t 64
+perl EDTA.pl --overwrite 0 --species others --sensitive 1 --anno 1 -t 128 --cds ${cds}
+```
 ## Protein Evidence 
+Fiften plant proteomes were downloaded from Phytozome, NCBI, or other repositories to use for protein evidence. 
+
+TABLE 
 
 ## Transcript Evidence 
+
+We used hisat2 to map RNASeq reads to the repeat-masked genome assembly. 
+```
+hisat2 -x ${INDEX} -1 "$file"_1P.fq.gz -2 "$file"_2P.fq.gz --threads 24 --rna-strandness RF | samtools view -b | samtools sort -o "$file"_${genome}.bam
+```
+
 Trinity v 2.12 was used to generate <i>de novo</i> and genome-guided transcriptome assemblies: 
 ```
 Trinity --CPU 16 --SS_lib_type RF --output ${out} --seqType fq --left ${leftReads} --right ${rightReads}

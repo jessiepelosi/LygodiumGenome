@@ -44,9 +44,26 @@ perl EDTA_raw.pl --genome ${genome} --species others --type helitron -t 64
 perl EDTA.pl --overwrite 0 --species others --sensitive 1 --anno 1 -t 128 --cds ${cds}
 ```
 ## Protein Evidence 
-Fiften plant proteomes were downloaded from Phytozome, NCBI, or other repositories to use for protein evidence. 
+Sixteen plant proteomes were downloaded from Phytozome, NCBI, or other repositories to use for protein evidence. 
 
-TABLE 
+| Lineage                 | Species                            | Genome Verion |
+| ------------------------| ---------------------------------- |---------------
+| Green Algae             |<i>Chlamydomonas reinhardtii </i>   | 5.5           |
+| Moss / Bryophytes       |<i> Physcomitrella patens</i>       | 3.3           |
+| Liverworts / Bryophytes |<i>Marchantia polymorpha</i>        | 3.1           |
+| Hornworts / Bryophytes  |<i>Anthoceros agrestis</i> (Oxford) |               |
+| Lycophytes              |<i>Selaginella moellendorfii</i>    |               |
+| Ferns                   |<i>Marsilea vestita</i>             | 3             |
+| Ferns                   |<i>Azolla filiculaoides</i>         | 1.1           |
+| Ferns                   |<i>Salvinia cucculata</i>           | 1.2           |
+| Ferns                   |<i>Alsophila spinulosa</i>          | 3.1           |
+| Ferns                   |<i>Ceratopteris richardii           | 2.1           |
+| Ferns                   |<i>Adiantum capillus-verneris       |               |
+| ANA / Angiosperms       |<i>Amborella trichopoda             | 1.0           |
+| Monocots / Angiosperms  |<i>Oryza sativa</i>                 | 7.0           |
+| Monoctos / Angiosperms  |<i>Zea mays</i>                     | 5.0.55        |
+| Eudicots / Angiopserms  |<i>Arabidopsis thaliana</i>         | Araport 11    |
+| Eudicots / Angiosperms  |<i>Populus trichocarpa</i>          | 4.1           |
 
 ## Transcript Evidence 
 

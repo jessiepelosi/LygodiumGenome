@@ -60,7 +60,31 @@ tabix -C -p vcf ${sample}_deduplicated_methylDackel.cytosine_report.txt.gz
 python summarize_methylation.py -i ${sample}_deduplicated_methylDackel_merged_CpG.bedGraph
 python summarize_methylation.py -i ${sample}_deduplicated_methylDackel_merged_CHG.bedGraph
 ```
+
 ## Summarizing and Analysis of Methylation Calls
 Deduplicated results were read into methylKit v1.20 in R v4.1.3 (see `DiffMethylation.R`) to call differentially methylated bases between gametophyte and sporophytes. 
 Methylation reports were used to visualize methylation across contexts in viewBS v0.1.10 (see `VisualizeMethylation.R`). 
 
+# Methylation from Oxford Nanopore Reads 
+Use modified basecalling models with dorado v0.3.3.
+```
+dorado basecaller dna_r10.4.1_e8.2_400bps_sup@v4.2.0 ${POD_DIR} --modified-bases 5mC_5hmC > ${OUTBAM}
+dorado basecaller dna_r10.4.1_e8.2_400bps_sup@v4.2.0 ${POD_DIR} --modified-bases 6mA > ${OUTBAM}
+```
+Convert bam files to fastq files for mapping and retain modification tags with samtools v0.1.18 then map to genome with minimap2.  
+```
+samtools fastq -T '*' ${OUTBAM} > ${FASTQ}
+minimap2 -ax map-ont -t 64 -y --secondary no ${REF} ${IN} --split-prefix temp | samtools view -b | samtools sort > ${BAM}
+samtools flagstat ${BAM}
+```
+Extract methylation information with modkit v. 
+```
+${MODKIT} pileup --cpg ${BAM} 5mC_5hmC_CHG.bedMethyl --ref ${REF} --log-filepath 5mC_5hmC_CHG.log --threads 16
+${MODKIT} pileup --motif CHG 0 ${BAM} 5mC_5hmC_CHG.bedMethyl --ref ${REF} --log-filepath 5mC_5hmC_CHG.log --threads 16
+${MODKIT} pileup --motif CHG 0 ${BAM} 5mC_5hmC_CHH.bedMethyl --ref ${REF} --log-filepath 5mC_5hmC_CHG.log --threads 16
+```
+
+Transform methylBed file to ViewBS-compatible file: 
+```
+cut -f 1,2,4,6,11,12,13 5mC_5hmC_CpG.bedMethyl | awk 'BEGIN {FS="\t"; OFS="\t"} {print $1, $2, $3, $4, $6, $7}' | grep 'm' | sed 's/$/\tCG\tCGN/g' | cut -f 1,2,4,5,6,7,8 > test.txt
+```

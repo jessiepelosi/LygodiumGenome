@@ -86,5 +86,7 @@ ${MODKIT} pileup --motif CHG 0 ${BAM} 5mC_5hmC_CHH.bedMethyl --ref ${REF} --log-
 
 Transform methylBed file to ViewBS-compatible file: 
 ```
-cut -f 1,2,4,6,11,12,13 5mC_5hmC_CpG.bedMethyl | awk 'BEGIN {FS="\t"; OFS="\t"} {print $1, $2, $3, $4, $6, $7}' | grep 'm' | sed 's/$/\tCG\tCGN/g' | cut -f 1,2,4,5,6,7,8 > test.txt
+sed -i 's/ /\t/g' ${BEDMETHYL} | cut -f 1,2,4,6,11,12,13 | \
+awk 'BEGIN {FS="\t"; OFS="\t"} {print $1, $2, $3, $4, $6, $7}' | \
+grep 'm' | sed 's/$/\tCG\tCGN/g' | cut -f 1,2,4,5,6,7,8 > ${BED}
 ```

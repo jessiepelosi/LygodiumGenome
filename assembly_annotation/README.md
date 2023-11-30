@@ -72,12 +72,28 @@ We used hisat2 to map RNASeq reads to the repeat-masked genome assembly.
 hisat2 -x ${INDEX} -1 "$file"_1P.fq.gz -2 "$file"_2P.fq.gz --threads 24 --rna-strandness RF | samtools view -b | samtools sort -o "$file"_${genome}.bam
 ```
 
+Bad splice junctions were filtered from these alignments with Portcullis v1.2.3. 
+```
+portcullis full -b --orientation FR --strandedness firststrand ${genome} ${bam} -t 12
+```
+
 Trinity v 2.12 was used to generate <i>de novo</i> and genome-guided transcriptome assemblies: 
 ```
 Trinity --CPU 16 --SS_lib_type RF --output ${out} --seqType fq --left ${leftReads} --right ${rightReads}
 Trinity --CPU 16 --SS_lib_type RF --output ${out} --genome_guided_bam ${bam} --genome_guided_max_intron 100000 --max_memory 50G
 ```
 
-Stringtie 
-
-Mikado 
+Stringtie v2.1.3b was used to stitch transcripts together given a filtered BAM file. 
+```
+stringtie --rf portcullis.filtered.bam -o stringtie.gtf -p 12 
+```
+Mikado v2.3.3 was used to pick high-quality transcripts from multiple transcriptome assemblies (<i>de novo</i> and genome-guided Trinity and Stringtie) to be used as transcript evidence for annotation. 
+```
+mikado configure --list config.txt --reference ${genome} --mode permissive --scoring plants.yaml --copy-scoring
+mikado prepare --json-conf configuration.yaml
+TransDecoder.LongOrfs -t mikado_prepared.fasta
+TransDecoder.Predict -t mikado_prepared.fasta
+mikado serialize --json-conf configuration.yaml --orfs mikado.orfs.gff3
+mikado pick --configuration configuration.yaml --subloci_out mikado.subloci.gff3
+gffread -w transcripts.fa -g ${genome} mikado.loci.gff3
+```

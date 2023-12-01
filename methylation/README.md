@@ -89,4 +89,6 @@ Transform methylBed file to ViewBS-compatible file:
 sed -i 's/ /\t/g' ${BEDMETHYL} | cut -f 1,2,4,6,11,12,13 | \
 awk 'BEGIN {FS="\t"; OFS="\t"} {print $1, $2, $3, $4, $6, $7}' | \
 grep 'm' | sed 's/$/\tCG\tCGN/g' | cut -f 1,2,4,5,6,7,8 > ${BED}
+cat 5mC_C*.txt | sort -k1,1 -k2,2n | bgzip > 5mC_allContexts.gz #Do for each modification type
+tabix -C -p vcf 5mC_allContexts.gz 
 ```

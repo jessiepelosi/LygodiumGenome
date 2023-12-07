@@ -97,3 +97,11 @@ mikado serialize --json-conf configuration.yaml --orfs mikado.orfs.gff3
 mikado pick --configuration configuration.yaml --subloci_out mikado.subloci.gff3
 gffread -w transcripts.fa -g ${genome} mikado.loci.gff3
 ```
+
+## Gene Prediction and Annotation 
+
+Transcript and protein evidence were fed to MAKER3 v3.01.33, which were used to directly predict genes during the first round using the hard-masked genome assembly. The relevant fields in the `maker_opts.ctl` file that were modified are: 
+```
+est2genome=1 #infer gene predictions directly from ESTs, 1 = yes, 0 = no
+protein2genome=1 #infer predictions from protein homology, 1 = yes, 0 = no
+```

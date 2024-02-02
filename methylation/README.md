@@ -62,7 +62,12 @@ python summarize_methylation.py -i ${sample}_deduplicated_methylDackel_merged_CH
 ```
 
 ## Summarizing and Analysis of Methylation Calls
-Deduplicated results were read into methylKit v1.20 in R v4.1.3 (see `DiffMethylation.R`) to call differentially methylated bases between gametophyte and sporophytes. 
+To convert GFF3 annotations to BED12 format, use the commands from UCSC: 
+```
+gff3ToGenePred {file}.gff3 tmp.genePred
+genePredToBed tmp.genePred {file}.bed
+```
+BED files are used to annotate differentially methylated regions. Deduplicated results were read into methylKit v1.20 in R v4.1.3 (see `DiffMethylation.R`) to call differentially methylated bases between gametophyte and sporophytes. 
 Methylation reports were used to visualize methylation across contexts in viewBS v0.1.10 (see `VisualizeMethylation.R`). 
 
 # Methylation from Oxford Nanopore Reads 

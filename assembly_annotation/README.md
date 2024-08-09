@@ -31,7 +31,15 @@ pilon --genome assembly.medaka1.fasta --frags assembly.medaka1.fasta.mapped.bam 
 ```
 
 The draft assembly was then scaffolded with HiC data. 
-
+```
+./yahs/juicer pre -a -o out_JBAT yahs.out.bin yahs.out_scaffolds_final.agp references/LMv0.1.8b.medaka1.pilon1.fasta.fai >out_JBAT.log 2>&1
+sort -k2,2d -k6,6d -T ./ --parallel=8 -S32G | awk 'NF' > alignments_sorted.txt.part
+java -jar -Xmx96G ./scripts/juicer_tools.1.9.9_jcuda.0.8.jar pre out_JBAT.txt out_JBAT.hic <(echo "assembly 1173944728")
+```
+Import HiC matrix into Juicebox Assembly Tools and manually edit as necessary (e.g., misjoins) and then finalize the assembly with Juicer. 
+```
+juicer post -o out_JBAT out_JBAT.review.assembly out_JBAT.liftover.agp references/LMv0.1.8b.medaka1.pilon1.fasta
+```
 # Annotation
 
 ## Repeat Annotation

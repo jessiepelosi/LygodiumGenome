@@ -8,5 +8,5 @@ Analyses of the <i>Lygodium microphyllum</i> genome as presented in the paper:
 All data for this project is publicly available from project number: XXXX. 
 
 This repository is divided in the directories: 
-1. Assembly and Annotation 
+1. [Assembly and Annotation](https://github.com/jessiepelosi/LygodiumGenome/tree/main/assembly_annotation)
 2. Code 

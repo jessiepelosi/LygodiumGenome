@@ -9,4 +9,8 @@ All data for this project is publicly available from project number: XXXX.
 
 This repository is divided in the directories: 
 1. [Assembly and Annotation](https://github.com/jessiepelosi/LygodiumGenome/tree/main/assembly_annotation)
-2. Code 
+2. [Methylation](https://github.com/jessiepelosi/LygodiumGenome/tree/main/methylation)
+3. [Transcriptome](https://github.com/jessiepelosi/LygodiumGenome/tree/main/transcriptome)
+4. [Organlles](https://github.com/jessiepelosi/LygodiumGenome/tree/main/organelles)
+
+

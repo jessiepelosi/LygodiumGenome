@@ -32,6 +32,8 @@ pilon --genome assembly.medaka1.fasta --frags assembly.medaka1.fasta.mapped.bam 
 
 The draft assembly was then scaffolded with HiC data. 
 ```
+juicer.sh -z ./references/LMv0.1.8b.medaka1.pilon1.fasta -s none -p references/chrom_sizes.txt --assembly
+./yahs references/LMv0.1.8b.medaka1.pilon1.fasta all_merged_dedup_LYMIv0.1.8c.bam
 ./yahs/juicer pre -a -o out_JBAT yahs.out.bin yahs.out_scaffolds_final.agp references/LMv0.1.8b.medaka1.pilon1.fasta.fai >out_JBAT.log 2>&1
 sort -k2,2d -k6,6d -T ./ --parallel=8 -S32G | awk 'NF' > alignments_sorted.txt.part
 java -jar -Xmx96G ./scripts/juicer_tools.1.9.9_jcuda.0.8.jar pre out_JBAT.txt out_JBAT.hic <(echo "assembly 1173944728")
@@ -40,6 +42,13 @@ Import HiC matrix into Juicebox Assembly Tools and manually edit as necessary (e
 ```
 juicer post -o out_JBAT out_JBAT.review.assembly out_JBAT.liftover.agp references/LMv0.1.8b.medaka1.pilon1.fasta
 ```
+This yields our scaffolded assembly! To generate subsets of this assembly based on minimum scaffold length, etc. we used SeqKit. 
+```
+seqkit seq -m 10000 out_JBAT.assembly > LMv1.1.8_m10000.fasta
+seqkit grep -f chrms.txt out_JBAT.assembly > LMv1.1.8_chrms.fasta
+seqkit stats *.fasta -a
+```
+
 # Annotation
 
 ## Repeat Annotation

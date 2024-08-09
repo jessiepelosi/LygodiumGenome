@@ -9,7 +9,7 @@ A model-based approach was implemented in GenomeScope v2.0 to estimate genome si
 ```
 genomescope.R -i 17mer_reads.histo -o genomescope_out -k 17
 ```
-A secondary approach was implemented using a custom R script (see `estimate_genome_size_kmers.R`). 
+A secondary approach was implemented using a custom R script (see `EstimateGenomeSize.Rmd`). 
 
 # Assembly 
 

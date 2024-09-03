@@ -18,7 +18,7 @@ Oxford Nanopore data was basecalled with super-acuracy mode either in MinKnow du
 ```
 dorado basecaller dna_r10.4.1_e8.2_400bps_sup@v4.1.0 *.pod5 --emit-fastq > file.fastq
 ```
-
+### For Lygodium_microphyllum_v0.1.8: 
 The SUP-called reads were used as input into flye v2.9.2, polished once with medaka v1.8, and pilon v1.24. 
 ```
 flye --nano-hq all_SUP_calls.fastq.gz --out-dir Lygodium_microphyllum_draft -g 5.1g -t 48 -i 2
@@ -30,7 +30,24 @@ export _JAVA_OPTIONS="-Xmx400G"
 pilon --genome assembly.medaka1.fasta --frags assembly.medaka1.fasta.mapped.bam --output assembly.medaka1.pilon1 --outdir ./ --fix all
 ```
 
-The draft assembly was then scaffolded with HiC data. 
+### For Lygodium_microphyllum_v0.1.9:
+We generated another assembly by first correcting the raw SUP-called reads with HERRO, which uses a machine-learning method and model. We modified the processing step to keep reads >5kb, rather than >10kb. 
+
+```
+./scripts/preprocess_JAP.sh ${reads} ${prefix} 24 24
+seqkit seq -ni <reads> > <read_ids>
+./scripts/create_batched_alignments.sh all_reads_filt.fastq.gz all_reads_filt.fastq.ids 16 ./aligns
+# NOTE THAT WE HAD TO RUN MINIMAP2 OUTSIDE OF HERRO SCRIPTS:
+minimap2 -k8g -cx ava-ont -k25 -w17 -e200 -r150 -m4000 -z200 -t64 --dual=yes all_reads_filt.fastq.gz all_reads_filt.fastq.gz > ONT-minimap.out
+herro inference --read-alns ./batch -m ./model_v0.1.pt -b 128 all_reads_filt.fastq.gz all_reads_filt_HERRO.fasta
+```
+
+We used the corrected reads as input to hifiasm vXX. 
+```
+hifiasm -o LM_v0.1.9 -t 32 all_reads_filt_HERRO.fasta
+```
+
+The draft assemblies were then scaffolded with HiC data. 
 ```
 juicer.sh -z ./references/LMv0.1.8b.medaka1.pilon1.fasta -s none -p references/chrom_sizes.txt --assembly
 ./yahs references/LMv0.1.8b.medaka1.pilon1.fasta all_merged_dedup_LYMIv0.1.8c.bam
@@ -51,16 +68,17 @@ seqkit stats *.fasta -a
 
 # Annotation
 
-## Repeat Annotation
+### Repeat Annotation
 
-EDTA v was used to mask and annotate repeats in the genome. We split the initial identification of repeats in the "raw" script to run these in parallel, and then combined them within the main script. 
+RepeatModeler v2.0 was used to generate a species-specific repeat library for the assembly. RepeatMasker v4.0.5 was then used to mask repetitive elements using the RepeatModeler library. 
+
 ```
-perl EDTA_raw.pl --genome ${genome} --species others --type ltr -t 64
-perl EDTA_raw.pl --genome ${genome} --species others --type tir -t 64
-perl EDTA_raw.pl --genome ${genome} --species others --type helitron -t 64
-perl EDTA.pl --overwrite 0 --species others --sensitive 1 --anno 1 -t 128 --cds ${cds}
+BuildDatabase -name <db-name> <assembly fasta>
+RepeatModeler -database <db-name> -pa 96 -LTRStruct
+RepeatMasker -pa 96 -lib <RepeatModeler library> <assembly fasta> -no_is -norna -gff -a --xsmall
 ```
-## Protein Evidence 
+
+### Protein Evidence 
 Sixteen plant proteomes were downloaded from Phytozome, NCBI, or other repositories to use for protein evidence. 
 
 | Lineage                 | Species                            | Genome Verion |
@@ -82,7 +100,7 @@ Sixteen plant proteomes were downloaded from Phytozome, NCBI, or other repositor
 | Eudicots / Angiopserms  |<i>Arabidopsis thaliana</i>         | Araport 11    |
 | Eudicots / Angiosperms  |<i>Populus trichocarpa</i>          | 4.1           |
 
-## Transcript Evidence 
+### Transcript Evidence 
 
 We used hisat2 to map RNASeq reads to the repeat-masked genome assembly. 
 ```

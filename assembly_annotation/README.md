@@ -107,36 +107,27 @@ We used hisat2 to map RNASeq reads to the repeat-masked genome assembly.
 hisat2 -x ${INDEX} -1 "$file"_1P.fq.gz -2 "$file"_2P.fq.gz --threads 24 --rna-strandness RF | samtools view -b | samtools sort -o "$file"_${genome}.bam
 ```
 
-Bad splice junctions were filtered from these alignments with Portcullis v1.2.3. 
-```
-portcullis full -b --orientation FR --strandedness firststrand ${genome} ${bam} -t 12
-```
-
-Trinity v 2.12 was used to generate <i>de novo</i> and genome-guided transcriptome assemblies: 
-```
-Trinity --CPU 16 --SS_lib_type RF --output ${out} --seqType fq --left ${leftReads} --right ${rightReads}
-Trinity --CPU 16 --SS_lib_type RF --output ${out} --genome_guided_bam ${bam} --genome_guided_max_intron 100000 --max_memory 50G
-```
-
-Stringtie v2.1.3b was used to stitch transcripts together given a filtered BAM file. 
-```
-stringtie --rf portcullis.filtered.bam -o stringtie.gtf -p 12 
-```
-Mikado v2.3.3 was used to pick high-quality transcripts from multiple transcriptome assemblies (<i>de novo</i> and genome-guided Trinity and Stringtie) to be used as transcript evidence for annotation. 
-```
-mikado configure --list config.txt --reference ${genome} --mode permissive --scoring plants.yaml --copy-scoring
-mikado prepare --json-conf configuration.yaml
-TransDecoder.LongOrfs -t mikado_prepared.fasta
-TransDecoder.Predict -t mikado_prepared.fasta
-mikado serialize --json-conf configuration.yaml --orfs mikado.orfs.gff3
-mikado pick --configuration configuration.yaml --subloci_out mikado.subloci.gff3
-gffread -w transcripts.fa -g ${genome} mikado.loci.gff3
-```
-
 ## Gene Prediction and Annotation 
 
-Transcript and protein evidence were fed to MAKER3 v3.01.33, which were used to directly predict genes during the first round using the hard-masked genome assembly. The relevant fields in the `maker_opts.ctl` file that were modified are: 
+Transcript and protein evidence were fed to BRAKER v3.0.6 , which were used to directly predict genes during the first round using the soft-masked genome assembly.
 ```
-est2genome=1 #infer gene predictions directly from ESTs, 1 = yes, 0 = no
-protein2genome=1 #infer predictions from protein homology, 1 = yes, 0 = no
+/opt/BRAKER/scripts/braker.pl --genome=Lygodium_microphyllum_v1.1.9.masked --species=LYMI_v1.1.9 --bam=stranded_to_v1.1.9.bam,non_stranded_to_v1.1.9.bam --prot_seq=plant_proteomes_primaryTranscriptOnly_edited_13Sept2024.pep --threads=8 --AUGUSTUS_CONFIG_PATH=config --GENEMARK_PATH=./GeneMark-ETP/
 ```
+We converted the resulting `braker.gtf` to gff3 format using the following command (provided by the BRAKER3 developers): 
+```
+cat braker.gtf | perl -ne 'if(m/\tAUGUSTUS\t/ or m/\tGeneMark\.hmm\t/ or m/\tGeneMark\.hmm3\t/ or m/\tgmst\t/) {print $_;}' | gtf2gff.pl --gff3 --out=braker.gff3
+```
+Statistics for the gene predictions were generated using AGAT v0.4.0: 
+```
+agat_sp_statistics.pl --gff braker.gff3
+```
+To get the longest isoform for each gene: 
+```
+sed 's/\.t[0-9]//g' braker.aa > braker.all.aa
+python get_longest.py braker.all.aa > braker.longest.aa
+```
+We than ran BUSCO on the longest isoform proteome: 
+```
+busco -i braker.longest.aa -m protein -l viridiplantae --out braker.longest.busco -f
+```
+

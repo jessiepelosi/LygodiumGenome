@@ -68,7 +68,17 @@ gff3ToGenePred {file}.gff3 tmp.genePred
 genePredToBed tmp.genePred {file}.bed
 ```
 BED files are used to annotate differentially methylated regions. Deduplicated results were read into methylKit v1.20 in R v4.1.3 (see `DiffMethylation.R`) to call differentially methylated bases between gametophyte and sporophytes. 
-Methylation reports were used to visualize methylation across contexts in viewBS v0.1.10 (see `VisualizeMethylation.R`). 
+Methylation reports were used to visualize methylation across contexts in viewBS v0.1.10 (see `VisualizeMethylation.R`).
+
+# Calculating and Comparing Gene Body Methylation
+
+To calculate gene body methylation, we first filtered the bedGraph files from above to only include gene sequences. For these analyses, we considered the entire gene body, from start codon to stop codon (this includes introns).  
+
+```
+bedtools intersect ${sample}.${context}.bedgraph braker.gene.gff3 -wb > ${sample}.methyl.${context}.gene.bedGraph 
+```
+Gene body methylation determined using the probabalistic approach described by Takuno and Gaut (2012) and implemented in R - see `calculate_gbM.R`. 
+
 
 # Methylation from Oxford Nanopore Reads 
 Use modified basecalling models with dorado v0.3.3.

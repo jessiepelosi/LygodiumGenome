@@ -1,0 +1,374 @@
+---
+title: "ComparativeRNASeq"
+author: "Jessie Pelosi"
+date: "2025-02-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(dplyr)
+library(pheatmap)
+library(ggplot2)
+```
+
+# Adiantum 
+
+Read in the data and make sure it looks okay before proceeding. 
+
+```{r}
+countData <- read.csv('CompRNASeq/Adiantum/Adiantum_GamSpor-GeneCounts.csv', header = TRUE, sep = ",", row.names = 1)
+#head(countData)
+
+coldata<-read.delim("CompRNASeq/Adiantum/AdiantumColData.csv", header = TRUE, row.names = 1, sep = ",")
+#head(coldata)
+```
+
+# Set-up to compare gametophyte and leaf RNASeq data #
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = countData, colData = coldata, design =~ Tissue)
+dds
+
+deseq <-DESeq(dds, )
+deseq
+
+# Here, we can change between 0 and 2 for logfoldchange threshold (lfc=0, or lcf=2)
+
+res <- results(deseq, alpha = 0.05, lfcThreshold = 2)
+res
+summary(res)
+res_sigs<-subset(res, padj < 0.05)
+
+vsd<-vst(deseq) 
+vsd
+
+```
+
+# Homeobox Gene Expression #
+Here, we want to qualitatively compare gene expression profiles of homeobox genes between gametophyte and sporophyte (leaf) tissues. In general, there is much lower expression levels of homeobox genes in the gametophyte tissues compared to the sporophyte leaf.
+
+```{r}
+homeobox <- read.delim("CompRNASeq/Adiantum/Adiantum_Homeobox_Classification.txt",header=F)
+
+vsd<-vst(deseq) 
+vsd
+
+homeoboxes <- vsd[rownames(vsd) %in% homeobox$V1, ]
+homeoboxes_sig <- homeoboxes[rownames(homeoboxes) %in% rownames(res_sigs), ]
+
+ph <- pheatmap(assay(homeoboxes_sig),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of significantly differentially expressed homeobox genes in the gametophyte and leaf", cutree_cols = 2, cutree_rows = 2)
+
+save_pheatmap_png <- function(x, filename, width=8, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(ph, "Adiantum_homeoboxSIG.pdf")
+
+# Let's look at all the homeobox gene expression 
+
+mat <- assay(homeoboxes)
+# need to remove row (genes) that have absolutely no difference in expression level:
+# these are Adc07544, Adc12048, Adc12622, Adc15757, Adc17021, Adc02271, Adc02366, Adc02367, Adc05259
+
+mat2 <- mat[-c(4,7,8,16, 26, 32, 33, 42, 46),]
+
+# Generate annotation df, remove genes w/o difference in expression level, and genes that weren't analyzed in DESeq (dropped?)
+
+homeoboxes_a <- homeobox[homeobox$V1 %in% rownames(mat2), ]
+
+rownames(homeoboxes_a) <- homeoboxes_a$V1
+annot <- dplyr::select(homeoboxes_a, V2)
+
+pheatmap(mat2,
+         scale="row",  annotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of homeobox gene expression in gametophyte and leaf",
+         cutree_rows = 2, cutree_cols = 2)
+
+ph <- pheatmap(mat2,
+         scale="row",  annotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of homeobox gene expression in gametophyte and leaf", cutree_rows = 2, cutree_cols = 2)
+
+#Save function from: https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+
+save_pheatmap_png <- function(x, filename, width=15, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(ph, "Adiantum_homeobox_levels_3Feb2025.pdf")
+
+# Now we are going to pull only KNOX-II and BEL genes to show that these expression levels are conserved across ferns 
+
+
+
+```
+
+# MADS-Box Genes #
+
+Let's now look at MADS-Box genes: 
+
+There are few MADS-box genes that are signficantly differentially expressed between gametophyte and leaf tissue. 
+
+
+```{r}
+MADS <- read.delim("CompRNASeq/Adiantum/Adiantum_MADS_Classification.txt",header=F)
+
+vsd<-vst(deseq) 
+vsd
+
+MADS_Exp <- vsd[rownames(vsd) %in% MADS$V1, ]
+MADS_sig <- MADS_Exp[rownames(MADS_Exp) %in% rownames(res_sigs), ]
+
+pheatmap(assay(MADS_sig),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of significantly differentially expressed homeobox genes in the gametophyte and leaf")
+
+# Let's look at all the homeobox gene expression 
+
+mat <- assay(MADS_Exp)
+# need to remove row (genes) that have absolutely no difference in expression level:
+# these are Adc07544, Adc12048, Adc12622, Adc15757, Adc17021, Adc02271, Adc02366, Adc02367, Adc05259
+
+mat2 <- mat[-c(4,6,9,12,14,21,22,24),]
+
+# Generate annotation df, remove genes w/o difference in expression level, and genes that weren't analyzed in DESeq (dropped?)
+
+mads_a <- MADS[MADS$V1 %in% rownames(mat2), ]
+
+rownames(mads_a) <- mads_a$V1
+annot <- dplyr::select(mads_a, V2)
+
+pheatmap(mat2,
+         scale="row",  nnotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of homeobox gene expression in gametophyte and leaf",
+         cutree_rows = 2, cutree_cols = 2)
+
+ph <- pheatmap(mat2,
+         scale="row",  annotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of homeobox gene expression in gametophyte and leaf", cutree_rows = 2, cutree_cols = 2)
+
+#Save function from: https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+
+save_pheatmap_png <- function(x, filename, width=15, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(ph, "Adiantum_homeobox_levels_3Feb2025.pdf")
+
+```
+
+## Ceratopteris richardii 
+
+
+```{r}
+countData <- read.csv('CompRNASeq/Ceratopteris/Ceratopteris_GeneCounts-GamSpor.csv', header = TRUE, sep = ",", row.names = 1)
+#head(countData)
+
+coldata<-read.delim("CompRNASeq/Ceratopteris/Ceratopteris_ColData-GamSpor.csv", header = TRUE, row.names = 1, sep = ",")
+#head(coldata)
+
+```
+
+```{r}
+#Let's remove the immature gametophyte tissues:
+
+countData_2 <- dplyr::select(countData, SRR17275295, SRR17275322, SRR17275323, SRR17275324, SRR17380274, SRR17380275, SRR17380276)
+
+coldata_2 <- dplyr::filter(coldata, Tissue != "ImmatureGametophyte")
+
+dds <- DESeqDataSetFromMatrix(countData = countData_2, colData = coldata_2, design =~ Tissue)
+dds
+
+deseq <-DESeq(dds, )
+deseq
+
+# Here, we can change between 0 and 2 for logfoldchange threshold (lfc=0, or lcf=2)
+
+res <- results(deseq, alpha = 0.05, lfcThreshold = 2)
+res
+summary(res)
+res_sigs<-subset(res, padj < 0.05)
+
+vsd<-vst(deseq) 
+vsd
+
+```
+# Homeobox Gene Expression #
+Here, we want to qualitatively compare gene expression profiles of homeobox genes between gametophyte and sporophyte (leaf) tissues. In general, there is much lower expression levels of homeobox genes in the gametophyte tissues compared to the sporophyte leaf.
+
+```{r}
+homeobox <- read.delim("CompRNASeq/Ceratopteris/Ceratopteris_HomeoboxClassification.txt",header=T)
+
+vsd<-vst(deseq) 
+vsd
+
+homeoboxes <- vsd[rownames(vsd) %in% homeobox$Gene, ]
+homeoboxes_sig <- homeoboxes[rownames(homeoboxes) %in% rownames(res_sigs), ]
+
+ph <- pheatmap(assay(homeoboxes_sig),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+save_pheatmap_png <- function(x, filename, width=5, height=3) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(ph, "Ceric_homeoboxSIGs.pdf")
+
+# Let's look at all the homeobox gene expression 
+
+mat <- assay(homeoboxes)
+# need to remove row (genes) that have absolutely no difference in expression level:
+# these are Adc07544, Adc12048, Adc12622, Adc15757, Adc17021, Adc02271, Adc02366, Adc02367, Adc05259
+
+mat2 <- mat[-c(4,7,8,16, 26, 32, 33, 42, 46),]
+
+# Generate annotation df, remove genes w/o difference in expression level, and genes that weren't analyzed in DESeq (dropped?)
+
+homeoboxes_a <- homeobox[homeobox$Gene %in% rownames(mat2), ]
+
+rownames(homeoboxes_a) <- homeoboxes_a$Gene
+annot <- dplyr::select(homeoboxes_a, Classification)
+
+pheatmap(mat,
+         scale="row",  #annotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of homeobox gene expression in gametophyte and leaf",
+         cutree_rows = 2, cutree_cols = 2)
+
+ph <- pheatmap(mat2,
+         scale="row",  annotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of homeobox gene expression in gametophyte and leaf", cutree_rows = 2, cutree_cols = 2)
+
+#Save function from: https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+
+save_pheatmap_png <- function(x, filename, width=15, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(ph, "Ceratopteris_homeobox_levels_3Feb2025.pdf")
+
+
+# Now we are going to pull only KNOX-II and BEL genes to show that these expression levels are conserved across ferns 
+
+homeoboxes_a <- homeobox[homeobox$Gene %in% rownames(mat2), ]
+homeoboxes_b <- dplyr::filter(homeoboxes_a, Classification == "KNOX-II" | Classification == "BEL")
+rownames(homeoboxes_b) <- homeoboxes_b$Gene
+annot <- dplyr::select(homeoboxes_b, Classification)
+mat3 <- mat2[rownames(mat2) %in% rownames(homeoboxes_b),]
+mat4 <- mat2[rownames(annot),]
+
+t <- pheatmap(mat4,
+         scale="row", annotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "", cutree_cols = 2)
+
+save_pheatmap_png <- function(x, filename, width=7, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(t, "Ceric_conserved_homeobox_diffs.pdf")
+
+```
+
+# MADS-Box Genes #
+
+Let's now look at MADS-Box genes: 
+
+There are few MADS-box genes that are signficantly differentially expressed between gametophyte and leaf tissue. 
+
+
+```{r}
+MADS <- read.delim("CompRNASeq/Ceratopteris/Ceratopteris_MADSClassification.txt",header=F)
+
+vsd<-vst(deseq) 
+vsd
+
+MADS_Exp <- vsd[rownames(vsd) %in% MADS$V1, ]
+MADS_sig <- MADS_Exp[rownames(MADS_Exp) %in% rownames(res_sigs), ]
+
+pheatmap(assay(MADS_sig),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of significantly differentially expressed homeobox genes in the gametophyte and leaf")
+
+# Let's look at all the homeobox gene expression 
+
+mat <- assay(MADS_Exp)
+# need to remove row (genes) that have absolutely no difference in expression level:
+# these are Adc07544, Adc12048, Adc12622, Adc15757, Adc17021, Adc02271, Adc02366, Adc02367, Adc05259
+
+mat2 <- mat[-c(4,6,9,12,14,21,22,24),]
+
+# Generate annotation df, remove genes w/o difference in expression level, and genes that weren't analyzed in DESeq (dropped?)
+
+mads_a <- MADS[MADS$V1 %in% rownames(mat2), ]
+
+rownames(mads_a) <- mads_a$V1
+annot <- dplyr::select(mads_a, V2)
+
+pheatmap(mat2,
+         scale="row",  nnotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of homeobox gene expression in gametophyte and leaf",
+         cutree_rows = 2, cutree_cols = 2)
+
+ph <- pheatmap(mat2,
+         scale="row",  annotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of homeobox gene expression in gametophyte and leaf", cutree_rows = 2, cutree_cols = 2)
+
+#Save function from: https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+
+save_pheatmap_png <- function(x, filename, width=15, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(ph, "Adiantum_homeobox_levels_3Feb2025.pdf")
+
+```

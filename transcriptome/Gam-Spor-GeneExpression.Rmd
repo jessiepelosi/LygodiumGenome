@@ -1,0 +1,789 @@
+---
+title: "Homeobox_Expression"
+author: "Jessie Pelosi"
+date: "2024-09-21"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(dplyr)
+library(pheatmap)
+library(ggplot2)
+```
+
+Read in the data and make sure it looks okay before proceeding. 
+
+```{r}
+countData <- read.csv('freezing-RNA/rna_gene_counts.csv', header = TRUE, sep = ",", row.names = 1)
+#head(countData)
+
+coldata<-read.csv("./freezing-RNA/coldata.csv", header = TRUE, row.names = 1)
+#head(coldata)
+```
+
+# Set-up to compare gametophyte and leaf RNASeq data #
+
+```{r}
+controlOnlyCounts <- countData %>% 
+  dplyr::select(CP1, CP2, CP3, CREW2.33L, CREW2.33R, CREW2.34L, CREW2.34R, CREW3.21L,CREW3.21R)
+
+controlOnlyCols <- coldata %>% 
+  filter(Treatment == "Control")
+
+control_dds <- DESeqDataSetFromMatrix(countData = controlOnlyCounts, colData = controlOnlyCols, design =~ Tissue)
+control_dds
+
+control_deseq <-DESeq(control_dds, )
+control_deseq
+
+# Here, we can change between 0 and 2 for logfoldchange threshold (lfc=0, or lcf=2)
+
+res <- results(control_deseq, alpha = 0.05, lfcThreshold = 2)
+res
+summary(res)
+
+control_vsd<-vst(control_deseq) 
+control_vsd
+
+#leaf vs gametophyte only: 
+
+controlOnlyCounts_lg <- countData %>% 
+  dplyr::select(CP1, CP2, CP3, CREW2.33L, CREW2.34L, CREW3.21L)
+
+controlOnlyCols_lg <- coldata %>% 
+  filter(Treatment == "Control") %>% 
+  filter(Tissue == "Gametophyte" | Tissue == "Leaf")
+
+control_dds <- DESeqDataSetFromMatrix(countData = controlOnlyCounts_lg, colData = controlOnlyCols_lg, design =~ Tissue)
+control_dds$Tissue <- relevel(control_dds$Tissue, ref="Leaf")
+control_dds
+
+control_deseq <-DESeq(control_dds)
+control_deseq
+
+control_vsd<-vst(control_deseq) 
+control_vsd
+
+res <- results(control_deseq, alpha = 0.05, lfcThreshold = 2)
+res
+summary(res)
+res_sigs<-subset(res, padj < 0.05)
+
+plotMA(res)
+
+```
+
+Let's see if there is anything interesting in these total sets - are there any functional categories that are enriched in up/down-regulated genes? 
+
+Most of the KEGG results point to differences in the secondary metabolites being produced by the gametophyte and leaf, which is likely unsurpising. 
+
+
+```{r}
+library(clusterProfiler)
+library(pathview)
+
+LygoBlast <- read.delim("Lygo_Arabidopsis.blast") 
+
+lygo_genes_AT <- LygoBlast %>% 
+  dplyr::select(Gene, ArabidopsisGene, evalue) %>%
+  #filter(evalue < 1e-5) %>% 
+  group_by(Gene) %>% 
+  arrange(evalue, .by_group = TRUE) %>% 
+  filter(row_number()==1)
+
+# Upregulated genes in the gametophyte 
+siggenes_exp <- as.data.frame(res_sigs$log2FoldChange)
+colnames(siggenes_exp) <- "Log2FC"
+siggenes_exp$Gene <- rownames(res_sigs)
+siggenes_exp_AT <- inner_join(siggenes_exp, lygo_genes_AT)
+
+upreg <- siggenes_exp_AT %>% 
+  filter(Log2FC > 2)
+
+kegg <- enrichKEGG(gene = upreg$ArabidopsisGene, organism = "ath", pvalueCutoff = 0.05)
+kegg
+
+# 3 pathways are enriched in the upregulated genes in the gametophyte 
+#   ath00940, ath00904, ath00908
+
+up_lfc <- upreg$Log2FC
+names(up_lfc) <- upreg$ArabidopsisGene
+browseKEGG(kegg, "ath00904") #Diterpenoid biosynthesis 
+browseKEGG(kegg, "ath00908")
+
+ath00904 <- pathview(gene.data  = up_lfc,
+                     pathway.id = "ath00904",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+downreg <- siggenes_exp_AT %>% 
+  filter(Log2FC < -2)
+
+kegg <- enrichKEGG(gene = downreg$ArabidopsisGene, organism = "ath", pvalueCutoff = 0.05)
+kegg
+
+down_lfc <- downreg$Log2FC
+names(down_lfc) <- downreg$ArabidopsisGene
+
+# 7 pathways are enriched in downregulated genes: 
+#     ath00940, ath00062, ath00941, ath00073, ath00592, ath00592, ath04626
+
+browseKEGG(kegg, "ath00904")
+browseKEGG(kegg, "ath00062")
+browseKEGG(kegg, "ath00941") # Flavonoid biosynthesis 
+browseKEGG(kegg, "ath00073")
+browseKEGG(kegg, "ath00592") # alpha-linolenic acid metabolism 
+browseKEGG(kegg, "ath02010")
+browseKEGG(kegg, "ath04626")
+
+ath00941 <- pathview(gene.data  = down_lfc,
+                     pathway.id = "ath00941",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+ath00592 <- pathview(gene.data  = down_lfc,
+                     pathway.id = "ath00592",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+
+```
+
+Now we're going to dig into the flavonoid and diterpenoid biosynthesis pathways to see what genes in particular are differenitally expressed. We'll start with the diterpenoid biosynthesis pathway. 
+
+```{r}
+# Diterpenoid biosynthesis: 
+ditpath <- read.csv("CompRNASeq/Ceratopteris/DiterpenoidBiosynthesis_PathwayGenes.csv")
+
+ditpath_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% ditpath$ArabidopsisGene, ]
+
+control_vsd<-vst(control_deseq) 
+control_vsd
+
+ditpath_lygo_exp <- control_vsd[rownames(control_vsd) %in% ditpath_lygo_genes$Gene, ]
+ditpath_sig <- ditpath_lygo_exp[ditpath_lygo_genes$Gene %in% rownames(res_sigs), ]
+rownames(ditpath_sig) 
+# g10940 AT4G02780 GA1
+# g15620 AT1G05160 KAO1 
+# g16121 AT5G25900 GA3 
+# g17841 AT2G32440 KAO2
+# g7699, g7700  AT5G51810 GA20OX2 
+# g7701, g7702, g7703, g7705, g7706, g7707 GA20OX1
+
+pheatmap(assay(ditpath_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of significantly differentially expressed homeobox genes in the gametophyte and leaf")
+
+# now we need to split up by reaction: 
+
+# EC5.5.1.13 
+EC5.5.1.13 <- filter(ditpath, Reaction == "EC:5.5.1.13")
+EC5.5.1.13_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% EC5.5.1.13$ArabidopsisGene, ]
+ditpath_lygo_exp <- control_vsd[rownames(control_vsd) %in% EC5.5.1.13_lygo_genes$Gene, ]
+p <- pheatmap(assay(ditpath_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+save_pheatmap_png <- function(x, filename, width=5, height=2) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(p, "EC.5.1.13_Expression.pdf")
+
+# EC4.2.3.19 - no lygodium gene hit 
+
+# EC1.14.14.86
+EC1.14.14.86 <- filter(ditpath, Reaction == "EC:1.14.14.86")
+EC1.14.14.86_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% EC1.14.14.86$ArabidopsisGene, ]
+ditpath_lygo_exp <- control_vsd[rownames(control_vsd) %in% EC1.14.14.86_lygo_genes$Gene, ]
+p <- pheatmap(assay(ditpath_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+save_pheatmap_png <- function(x, filename, width=5, height=2) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(p, "EC1.14.14.86_Expression.pdf")
+
+# EC:1.14.14.107
+EC1.14.14.107 <- filter(ditpath, Reaction == "EC:1.14.14.107")
+EC1.14.14.107_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% EC1.14.14.107$ArabidopsisGene, ]
+ditpath_lygo_exp <- control_vsd[rownames(control_vsd) %in% EC1.14.14.107_lygo_genes$Gene, ]
+p <- pheatmap(assay(ditpath_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+save_pheatmap_png <- function(x, filename, width=5, height=3) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(p, "EC1.14.14.107_Expression.pdf")
+
+# EC:1.14.11.12
+EC1.14.11.12 <- filter(ditpath, Reaction == "EC:1.14.11.12")
+EC1.14.11.12_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% EC1.14.11.12$ArabidopsisGene, ]
+ditpath_lygo_exp <- control_vsd[rownames(control_vsd) %in% EC1.14.11.12_lygo_genes$Gene, ]
+p <- pheatmap(assay(ditpath_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+save_pheatmap_png <- function(x, filename, width=5, height=6) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(p, "EC1.14.11.12_Expression.pdf")
+
+
+# EC:1.14.11.15 - no Lygodium hits 
+```
+
+Now let's look at flavonoid biosynthesis 
+
+```{r}
+# Flavonoid biosynthesis:
+flavpath <- read.csv("FlavonoidBiosynthesis_PathwayGenes.csv")
+
+flavpath_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% flavpath$ArabidopsisGene, ]
+
+control_vsd<-vst(control_deseq) 
+control_vsd
+
+flav_lygo_exp <- control_vsd[rownames(control_vsd) %in% flavpath_lygo_genes$Gene, ]
+flavpath_sig <- flav_lygo_exp[flavpath_lygo_genes$Gene %in% rownames(res_sigs), ]
+rownames(flavpath_sig) 
+
+# [1] "g10018" "g11083" "g11084" "g11085" "g11550" "g1399"  "g14049" "g14066" "g14080" "g15527"
+#[11] "g15530" "g16857" "g18531" "g18535" "g19633" "g21744" "g2212"  "g22156" "g22182" "g22183"
+#[21] "g22190" "g2275"  "g3188"  "g3281"  "g7410"  "g7890"  "g8750" 
+
+pheatmap(assay(flav_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+# now we need to split up by reaction: 
+
+# EC:1.14.14.91 
+EC1.14.14.91 <- filter(flavpath, Reaction == "EC:1.14.14.91")
+EC1.14.14.91_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% EC1.14.14.91$ArabidopsisGene, ]
+flavpath_lygo_exp <- control_vsd[rownames(control_vsd) %in% EC1.14.14.91_lygo_genes$Gene, ]
+p <- pheatmap(assay(flavpath_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+save_pheatmap_png <- function(x, filename, width=5, height=2) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(p, "EC1.14.14.91_Expression.pdf")
+
+# EC:2.3.1.74
+EC2.3.1.74 <- filter(flavpath, Reaction == "EC:2.3.1.74")
+EC2.3.1.74_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% EC2.3.1.74$ArabidopsisGene, ]
+flavpath_lygo_exp <- control_vsd[rownames(control_vsd) %in% EC2.3.1.74_lygo_genes$Gene, ]
+p <- pheatmap(assay(flavpath_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+save_pheatmap_png <- function(x, filename, width=5, height=2) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(p, "EC2.3.1.74_Expression.pdf")
+
+# EC:2.3.1.133
+EC2.3.1.133 <- filter(flavpath, Reaction == "EC:2.3.1.133")
+EC2.3.1.133_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% EC2.3.1.133$ArabidopsisGene, ]
+flavpath_lygo_exp <- control_vsd[rownames(control_vsd) %in% EC2.3.1.133_lygo_genes$Gene, ]
+p <- pheatmap(assay(flavpath_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+save_pheatmap_png <- function(x, filename, width=5, height=6) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(p, "EC2.3.1.133_Expression.pdf")
+
+# EC:5.5.1.6 - no Lygodium hits 
+
+# EC:1.14.14.82
+EC1.14.14.82 <- filter(flavpath, Reaction == "EC:1.14.14.82")
+EC1.14.14.82_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% EC1.14.14.82$ArabidopsisGene, ]
+flavpath_lygo_exp <- control_vsd[rownames(control_vsd) %in% EC1.14.14.82_lygo_genes$Gene, ]
+p <- pheatmap(assay(flavpath_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+save_pheatmap_png <- function(x, filename, width=5, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(p, "EC1.14.14.82_Expression.pdf")
+
+# EC:1.14.11.9 - no sig Lygodium hits
+
+# EC:1.14.20.4 - no sig Lygodium hits 
+
+# EC:1.1.1.219 - no sig Lygodium hits 
+
+# EC.2.1.1.104
+EC2.1.1.104 <- filter(flavpath, Reaction == "EC.2.1.1.104")
+EC2.1.1.104_lygo_genes <- siggenes_exp_AT[siggenes_exp_AT$ArabidopsisGene %in% EC2.1.1.104$ArabidopsisGene, ]
+flavpath_lygo_exp <- control_vsd[rownames(control_vsd) %in% EC2.1.1.104_lygo_genes$Gene, ]
+p <- pheatmap(assay(flavpath_lygo_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "")
+
+save_pheatmap_png <- function(x, filename, width=5, height=2) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(p, "EC2.1.1.104_Expression.pdf")
+
+```
+
+``` {r}
+## Now let's look at GO enrichment: 
+
+library(topGO)
+# Define the gene universe
+geneID2GO <- readMappings(file = "v1.1.9/Braker-GOs.txt")
+all_genes <- names(geneID2GO)
+
+########################################
+### Upregulated Genes in Gametophyte ###
+########################################
+
+upreg_genes <- upreg$Gene
+geneList <- factor(as.integer(all_genes %in% upreg_genes))
+names(geneList) <- all_genes
+
+### Biological Process ###
+
+upreg_BP <- new("topGOdata", description = "upregulated genes in the gametophyte", ontology = "BP", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_BP <- sigGenes(upreg_BP)
+str(sig_genes_BP)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(upreg_BP)
+#272
+#Run Fisher's Exact Test for Biological Processes 
+#Note that this does not correct for multiple comparisons 
+BP_result_Fisher <- runTest(upreg_BP, algorithm = "classic", statistic = "fisher")
+BP_result_Fisher
+#30 terms have raw p<0.01
+BP_list <- usedGO(object = upreg_BP)
+BP_fisher_only <- GenTable(upreg_BP, classicFisher = BP_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(BP_list))
+BP_corrected <- p.adjust(BP_fisher_only$classicFisher, method = "fdr")
+BP_corrected <- as.data.frame(BP_corrected)
+BP_corrected_significant <- BP_corrected %>% 
+  filter(BP_corrected < 0.05)
+# 9terms significant after correcting for multiple comparisons, FDR, P < 0.05
+
+BP_fisher_top <- BP_fisher_only[1:9,] 
+showSigOfNodes(upreg_BP, score(BP_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+printGraph(upreg_BP, BP_result_Fisher, firstSigNodes = 10, fn.prefix = "upregulated_genes_gametophyte_BP", useInfo = 'all')
+
+BP_corrected$classicFisher = BP_fisher_only$classicFisher
+BP_table <- dplyr::left_join(BP_fisher_top, BP_corrected)
+BP_table_uni <- unique(BP_table)
+write.csv(BP_table_uni, file = "upregulated_genes_gametophyte_BP_corrected.csv") 
+
+### Cellular Component ###
+
+upreg_CC <- new("topGOdata", description = "upregulated gametophyte", ontology = "CC", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_CC <- sigGenes(upreg_CC)
+str(sig_genes_CC)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(upreg_CC)
+#132
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+CC_result_Fisher <- runTest(upreg_CC, algorithm = "classic", statistic = "fisher")
+CC_result_Fisher
+#1 terms have raw p<0.01
+CC_list <- usedGO(object = upreg_CC)
+CC_fisher_only <- GenTable(upreg_CC, classicFisher = CC_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(CC_list))
+CC_corrected <- p.adjust(CC_fisher_only$classicFisher, method = "fdr")
+CC_corrected <- as.data.frame(CC_corrected)
+CC_corrected_significant <- CC_corrected %>% 
+  filter(CC_corrected < 0.05)
+#0 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+#CC_fisher_top <- CC_fisher_only[1:2,] 
+#showSigOfNodes(gam_upreg_CC, score(CC_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+#printGraph(gam_upreg_CC, CC_result_Fisher, firstSigNodes = 10, fn.prefix = "gam_upreg_CC", useInfo = 'all')
+
+#CC_corrected$classicFisher = CC_fisher_only$classicFisher
+#CC_table <- dplyr::left_join(CC_fisher_top, CC_corrected)
+#CC_table_uni <- unique(CC_table)
+#write.csv(CC_table_uni, file = "gam_upreg_CC_corrected.csv") 
+
+### Molecular Function ###
+
+upreg_MF <- new("topGOdata", description = "upregulated gametophyte", ontology = "MF", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_MF <- sigGenes(upreg_MF)
+str(sig_genes_MF)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(upreg_MF)
+#547
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+MF_result_Fisher <- runTest(upreg_MF, algorithm = "classic", statistic = "fisher")
+MF_result_Fisher
+#20 terms have raw p<0.01
+MF_list <- usedGO(object = upreg_MF)
+MF_fisher_only <- GenTable(upreg_MF, classicFisher = MF_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(MF_list))
+MF_corrected <- p.adjust(MF_fisher_only$classicFisher, method = "fdr")
+MF_corrected <- as.data.frame(MF_corrected)
+MF_corrected_significant <- MF_corrected %>% 
+  filter(MF_corrected < 0.05)
+# 6 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+MF_fisher_top <- MF_fisher_only[1:6,] 
+showSigOfNodes(upreg_MF, score(MF_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+printGraph(upreg_MF, MF_result_Fisher, firstSigNodes = 10, fn.prefix = "gam_upreg_MF", useInfo = 'all')
+
+MF_corrected$classicFisher = MF_fisher_only$classicFisher
+MF_table <- dplyr::left_join(MF_fisher_top, MF_corrected)
+MF_table_uni <- unique(MF_table)
+write.csv(MF_table_uni, file = "gam_upreg_MF_corrected.csv") 
+
+##########################################
+### Downregulated Genes in Gametophyte ###
+##########################################
+downreg_genes <- downreg$Gene
+geneList <- factor(as.integer(all_genes %in% downreg_genes))
+names(geneList) <- all_genes
+
+### Biological Process ###
+down_BP <- new("topGOdata", description = "downregulated genes in the gametophyte", ontology = "BP", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_BP <- sigGenes(down_BP)
+str(sig_genes_BP)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(down_BP)
+#336
+#Run Fisher's Exact Test for Biological Processes 
+#Note that this does not correct for multiple comparisons 
+BP_result_Fisher <- runTest(down_BP, algorithm = "classic", statistic = "fisher")
+BP_result_Fisher
+#19 terms have raw p<0.01
+BP_list <- usedGO(object = down_BP)
+BP_fisher_only <- GenTable(down_BP, classicFisher = BP_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(BP_list))
+BP_corrected <- p.adjust(BP_fisher_only$classicFisher, method = "fdr")
+BP_corrected <- as.data.frame(BP_corrected)
+BP_corrected_significant <- BP_corrected %>% 
+  filter(BP_corrected < 0.05)
+
+#0 terms are significant after mult comparisons, FDR, P< 0.05
+#BP_fisher_top <- BP_fisher_only[1:9,] 
+#showSigOfNodes(gam_down_BP, score(BP_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+#printGraph(gam_down_BP, BP_result_Fisher, firstSigNodes = 10, fn.prefix = "gam_down_BP", useInfo = 'all')
+
+#BP_corrected$classicFisher = BP_fisher_only$classicFisher
+#BP_table <- dplyr::left_join(BP_fisher_top, BP_corrected)
+#BP_table_uni <- unique(BP_table)
+#write.csv(BP_table_uni, file = "gam_down_BP_corrected.csv")
+
+### Cellular Component ###
+down_CC <- new("topGOdata", description = "downregulated genes in the gametophyte", ontology = "CC", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_CC <- sigGenes(down_CC)
+str(sig_genes_CC)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(down_CC)
+#97
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+CC_result_Fisher <- runTest(down_CC, algorithm = "classic", statistic = "fisher")
+CC_result_Fisher
+#0 terms have raw p<0.01
+CC_list <- usedGO(object = down_CC)
+CC_fisher_only <- GenTable(down_CC, classicFisher = CC_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(CC_list))
+CC_corrected <- p.adjust(CC_fisher_only$classicFisher, method = "fdr")
+CC_corrected <- as.data.frame(CC_corrected)
+CC_corrected_significant <- CC_corrected %>% 
+  filter(CC_corrected < 0.05)
+#0 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+#CC_fisher_top <- CC_fisher_only[1:3,] 
+#showSigOfNodes(gam_down_CC, score(CC_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+#printGraph(gam_down_CC, CC_result_Fisher, firstSigNodes = 10, fn.prefix = "gam_down_CC", useInfo = 'all')
+
+#CC_corrected$classicFisher = CC_fisher_only$classicFisher
+#CC_table <- dplyr::left_join(CC_fisher_top, CC_corrected)
+#CC_table_uni <- unique(CC_table)
+#write.csv(CC_table_uni, file = "gam_down_CC_corrected.csv")
+
+### Molecular Function ###
+down_MF <- new("topGOdata", description = "downregulated genes in the gametophyte", ontology = "MF", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_MF <- sigGenes(down_MF)
+str(sig_genes_MF)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(down_MF)
+#619
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+MF_result_Fisher <- runTest(down_MF, algorithm = "classic", statistic = "fisher")
+MF_result_Fisher
+#16 terms have raw p<0.01
+MF_list <- usedGO(object = down_MF)
+MF_fisher_only <- GenTable(down_MF, classicFisher = MF_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(MF_list))
+MF_corrected <- p.adjust(MF_fisher_only$classicFisher, method = "fdr")
+MF_corrected <- as.data.frame(MF_corrected)
+MF_corrected_significant <- MF_corrected %>% 
+  filter(MF_corrected < 0.05)
+#12 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+MF_fisher_top <- MF_fisher_only[1:12,] 
+showSigOfNodes(down_MF, score(MF_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+printGraph(down_MF, MF_result_Fisher, firstSigNodes = 10, fn.prefix = "gam_down_MF", useInfo = 'all')
+
+MF_corrected$classicFisher = MF_fisher_only$classicFisher
+MF_table <- dplyr::left_join(MF_fisher_top, MF_corrected)
+MF_table_uni <- unique(MF_table)
+write.csv(MF_table_uni, file = "gam_down_MF_corrected.csv") 
+
+
+```
+
+# Homeobox Gene Expression #
+Here, we want to qualitatively compare gene expression profiles of homeobox genes between gametophyte and sporophyte (leaf) tissues. In general, there is much lower expression levels of homeobox genes in the gametophyte tissues compared to the sporophyte leaf.
+
+```{r}
+homeobox <- read.delim("homeobox/Lygodium_homeobox_genes.txt")
+
+control_vsd<-vst(control_deseq) 
+control_vsd
+
+homeoboxes <- control_vsd[rownames(control_vsd) %in% homeobox$Gene, ]
+homeoboxes_sig <- homeoboxes[rownames(homeoboxes) %in% rownames(res_sigs), ]
+
+ph <- pheatmap(assay(homeoboxes_sig),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of significantly differentially expressed homeobox genes in the gametophyte and leaf", cutree_rows = 2, cutree_cols = 2)
+
+save_pheatmap_png <- function(x, filename, width=5, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(ph, "Lygo_homeoboxSIGs.pdf")
+
+
+# Let's look at all the homeobox gene expression 
+
+mat <- assay(homeoboxes)
+# need to remove row (genes) that have absolutely no difference in expression level:
+# these are g5522 [row37]
+mat2 <- mat[-c(37),]
+
+homeoboxes_a <- dplyr::filter(homeobox, Gene != "g5522")
+rownames(homeoboxes_a) <- homeoboxes_a$Gene
+annot <- dplyr::select(homeoboxes_a, Classification)
+
+pheatmap(mat2,
+         scale="row",  annotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of homeobox gene expression in gametophyte and leaf", cutree_rows = 2, cutree_cols = 2)
+
+ph <- pheatmap(mat2,
+         scale="row",  annotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = TRUE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of homeobox gene expression in gametophyte and leaf", cutree_rows = 2, cutree_cols = 2)
+
+#Save function from: https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+
+save_pheatmap_png <- function(x, filename, width=5, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(ph, "homeobox_levels_5Nov2024.pdf")
+
+
+# Let's pull out KNOX-II, BEL, and fern-specific HDZIPs
+
+homeoboxes_a <- dplyr::filter(homeobox, Gene != "g5522")
+homeoboxes_b <- dplyr::filter(homeoboxes_a, Classification == "KNOX-II" | Classification == "BEL")
+rownames(homeoboxes_b) <- homeoboxes_b$Gene
+annot <- dplyr::select(homeoboxes_b, Classification)
+mat3 <- mat2[rownames(mat2) %in% rownames(homeoboxes_b),]
+mat4 <- mat2[rownames(annot),]
+
+t <- pheatmap(mat4,
+         scale="row", annotation_row = annot,  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "", cutree_cols = 2)
+
+save_pheatmap_png <- function(x, filename, width=7, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(t, "Lygo_conserved_homeobox_diffs.pdf")
+
+```
+
+# MADS-Box Genes #
+
+Let's first look at MADS-Box genes: 
+
+There are few MADS-box genes that are signficantly differentially expressed between gametophyte and leaf tissue. 
+
+g10464 and g1194 are more highly expressed in the gametophyte than the sporophyte. 
+
+- g10464 falls in the CRM3 clade, which is more highly expressed in gametophyte than sporophyte in L. japonicum (Zhang et al. 2024). 
+- g1194 falls in the MIKC* clade. 
+
+g1176, g1177, g17401, g22186, and g22188 are all downregulated in the gametophyte relative to the leaf. Three of these (g1176, g1177, and g17401) fall in the CRM6 clade. 
+
+
+```{r}
+AtMADS <- read.delim("ArabidopssiMADS.txt")
+
+LygodiumMADS <- inner_join(LygoBlast,AtMADS ) %>% 
+  select(Gene, ArabidopsisGene, evalue) %>%
+  filter(evalue < 1e-5) %>% 
+  group_by(Gene) %>% 
+  arrange(evalue, .by_group = TRUE) %>% 
+  filter(row_number()==1)
+
+MADS <- control_vsd[rownames(control_vsd) %in% LygodiumMADS$Gene, ]
+MADS_sig <- MADS[rownames(MADS) %in% rownames(res_sigs), ]
+
+pheatmap(assay(MADS_sig),
+         scale="row",
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of significantly differentially expressed MADS Box genes in the gametophyte and leaf")
+
+#Significantly upreg in gametophyte: g10464, g1194
+#Signifacntly downreg in gametophyte: g1176, g1177, 17401, g22186, g22188 
+
+# A total of 58 MADS box genes 
+
+# g10464 = Agamous-like 15 (AGL15) -- falls in CMR3, also more highly expressed in gam than spor in L. japonicum -- neat! 
+# g1194 = Agomous-like 104 (AGL104), expressed in pollen!, is a MIKC* 
+
+# g1176 = Agomous (AG), specifies floral meristem, and carpel + stamen identity, is in CRM6 
+# g1177 = Also AG, also CRM6 
+# 17401 = Agamous-like 5 (AGL5)/Shatterproof 2 (SHP2), invovled in fruit development, also CRM6  
+# 22186 = Also AGL5
+# 22188 = Also AGL5 
+
+
+# Pull out CRM3 and CRM6 Lygodium genes and look at expression profiles: 
+
+Lygodium_MADS_ClassifiedByPhy <- read.delim("MADS-BOX/LygodiumMADS_Classified.txt")
+CRM3_6 <- Lygodium_MADS_ClassifiedByPhy %>% 
+  filter(Classification == "CRM3" | Classification == "CRM6")
+
+CRM3_6_Exp <- control_vsd[rownames(control_vsd) %in% CRM3_6$Gene, ]
+mat <- assay(CRM3_6_Exp)
+# need to remove rows (genes) that have absolutely no difference in expression level:
+# these are g1175 [row6], g22214[row 20], g9439[row 30]
+mat2 <- mat[-c(6, 20, 30),]
+
+CRM3_6_a <- filter(CRM3_6, Gene != "g1175" | Gene != "g22214" | Gene != "g9439")
+rownames(CRM3_6_a) <- CRM3_6_a$Gene
+annot <- select(CRM3_6_a, Classification)
+  
+
+ph <- pheatmap(mat2,
+         scale="row",annotation_row = annot,
+         show_rownames = TRUE, treeheight_col = 0, cluster_rows=T,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Z-Scores of expression levels of CRM3 and CRM6 genes in gametophyte & leaf", cutree_rows = 2, cutree_cols = 2)
+
+#Save function from: https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+
+save_pheatmap_png <- function(x, filename, width=5, height=6) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png(ph, "MADS-box_CRM3-6_levels_6Nov2024.pdf")
+
+```
+

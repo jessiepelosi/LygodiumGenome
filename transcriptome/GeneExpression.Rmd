@@ -1,0 +1,881 @@
+---
+title: "GeneExpression"
+author: "Jessie Pelosi"
+date: "2024-08-09"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(dplyr)
+library(pheatmap)
+library(ggplot2)
+```
+
+# Read data.
+Read in the data and make sure it looks okay before proceeding. 
+
+```{r}
+countData <- read.csv('freezing-RNA/rna_gene_counts.csv', header = TRUE, sep = ",", row.names = 1)
+#head(countData)
+
+coldata<-read.csv("./freezing-RNA/coldata.csv", header = TRUE, row.names = 1)
+#head(coldata)
+```
+
+# Compare all tissue and treatment types. 
+
+Now, let's look at the differentially expression genes between all tissues and treatments! Note that the treatment here is freezing at -20C for 2 hours. 
+
+```{r}
+
+all_dds <- DESeqDataSetFromMatrix(countData = countData, colData = coldata, design =~ Treatment + Tissue + Treatment:Tissue)
+#gam_spor_dds$Tissue <- relevel(gam_spor_dds$Tissue, ref = "Leaf")
+all_dds
+
+all_deseq <-DESeq(all_dds)
+all_deseq
+
+res<-results(all_deseq, alpha = 0.05, lfcThreshold = 0)
+res
+summary(res)
+
+all_vsd<-vst(all_deseq) 
+allsigs <-subset(res, padj < 0.05)
+allsigs2<-rownames(allsigs) 
+all.vsd.subset <- all_vsd[rownames(all_vsd) %in% allsigs2, ] 
+summary(all.vsd.subset) 
+obj <- plotPCA(all.vsd.subset, intgroup = c("Tissue", "Treatment"))
+
+q <- ggplot_build(obj)
+df <- as.data.frame(q$plot$data)
+df2 <- df %>% 
+  dplyr::select(PC1, PC2, Tissue, Treatment, name)
+
+# PC1: 64%, PC2: 28% (this is found in "obj")
+
+ggplot(data = df2, mapping = aes(x = PC1, y = PC2, color = Tissue, shape = Treatment)) +
+  geom_point(size = 3, alpha = 0.75) + theme_classic() + 
+  scale_color_manual(values = c("Gametophyte" = "darkolivegreen3", "Leaf" = "deepskyblue2", "Root" = "chocolate3")) +
+  xlab("PC1 (64% of Variation)") + ylab("PC2 (28% of Variation)")
+
+ggsave("freezing-RNA/DGE_PCA-genecount_v1.1.9.png", dpi = 300, height = 5, width =7)
+
+all_vsd<-vst(all_deseq) 
+allsigs <-subset(res, padj < 0.05)
+allsigs2<-rownames(allsigs) 
+all.vsd.subset <- all_vsd[rownames(all_vsd) %in% allsigs2, ] 
+summary(all.vsd.subset) 
+
+resSigind = res[ which(res$padj < 0.05 & res$log2FoldChange > 0), ]
+resSigrep = res[ which(res$padj < 0.05 & res$log2FoldChange < 0), ]
+resSig = rbind(resSigind, resSigrep)
+allSig_genes <- rownames(resSig)
+
+rld <- rlog(all_deseq)
+rld_sign <- assay(rld)[allSig_genes,]
+topVarGenes <- head(order(rowVars((rld_sign)), decreasing=TRUE), 35)
+
+k <- pheatmap(rld_sign[topVarGenes,], scale = "row", kmeans_k = 3)
+clusterDF <- as.data.frame(factor(k$kmeans$cluster))
+colnames(clusterDF) <- "Cluster"
+
+OrderByCluster <- OrderByCluster <- rld_sign[topVarGenes,][order(clusterDF$Cluster),]
+
+pheatmap(OrderByCluster,
+         scale="row",annotation_row = clusterDF,
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100))
+
+
+```
+
+
+## Only gametophyte vs. sporophyte tissues. 
+
+Breakdown the above analysis to only compare gametophyte and sporophyte (leaf) tissues. These are functionally the most similar, so differentially expressed genes should be in the most interesting/informative. 
+
+```{r}
+gam_spor_count <- countData %>% 
+  dplyr::select(CP1, CP2, CP3, CREW2.33L, CREW2.34L, CREW3.21L)
+gam_spor_col <- coldata %>% 
+  filter(Tissue == "Gametophyte" | Tissue == "Leaf") %>% 
+  filter(Treatment == "Control")
+
+gam_spor_dds <- DESeqDataSetFromMatrix(countData = gam_spor_count, colData = gam_spor_col, design =~ Tissue)
+gam_spor_dds$Tissue <- relevel(gam_spor_dds$Tissue, ref = "Leaf")
+#gam_spor_dds
+
+gam_spor_deseq <-DESeq(gam_spor_dds)
+#gam_spor_deseq
+
+res<-results(gam_spor_deseq, alpha = 0.05, lfcThreshold = 2)
+summary(res)
+
+res_sign <- as.data.frame(res) %>% 
+  filter(padj <= 0.05) %>% 
+  filter(log2FoldChange >= 2 | log2FoldChange <=-2)
+
+write.csv(as.data.frame(res_sign), 
+          file="leaf_gametophyte_results.csv")
+
+drawLines <- function() abline(h=c(-2,2), col="gray", lwd=2)
+plotMA(res); drawLines()
+
+res_sigs<-subset(res, padj < 0.05)
+#res_sigs
+
+upreg <- subset(res_sigs, log2FoldChange > 0); upreg
+gam_upreg_genes <- rownames(upreg)
+
+downreg <- subset(res_sigs, log2FoldChange < 0); downreg
+gam_down_genes <- rownames(downreg)
+
+```
+
+# Fine-scale differences between treatments within tissues types. 
+Let's look at differentially expressed genes within tissues but between treatments. Starting with the gametophyte. 
+
+## Gametophyte freezing vs. control. 
+
+```{r}
+###############################
+### DGE of Gametophyte-Only ###
+###############################
+
+gam_count <- countData %>% 
+  dplyr::select(CP1, CP2, CP3, FP1, FP2, FP3)
+gam_col <- coldata %>% 
+  filter(Tissue == "Gametophyte")
+
+gam_dds <- DESeqDataSetFromMatrix(countData = gam_count, colData = gam_col, design =~ Treatment)
+gam_dds$Treatment <- relevel(gam_dds$Treatment, ref = "Control")
+gam_dds
+
+gam_deseq <-DESeq(gam_dds)
+gam_deseq
+
+res<-results(gam_deseq, alpha = 0.05, lfcThreshold = 0)
+res
+summary(res)
+
+#out of 19891 with nonzero total read count
+#adjusted p-value < 0.05
+#LFC > 0 (up)       : 230, 1.2%
+#LFC < 0 (down)     : 416, 2.1%
+#outliers [1]       : 5, 0.025%
+#low counts [2]     : 2277, 12%
+#(mean count < 5)
+
+res_sigs<-subset(res, padj < 0.05)
+res_sigs
+
+upreg <- subset(res_sigs, log2FoldChange > 0); upreg
+gam_upreg_genes <- rownames(upreg)
+
+downreg <- subset(res_sigs, log2FoldChange < 0); downreg
+gam_down_genes <- rownames(downreg)
+
+DESeq2::plotMA(res, main = "Log2-Fold Change vs. Base Mean", ylim=c(-5,5))
+
+gam_vsd<-vst(gam_deseq) 
+gamsigs <-subset(res, padj < 0.05)
+gamsigs2<-rownames(gamsigs) 
+gam.vsd.subset <- gam_vsd[rownames(gam_vsd) %in% gamsigs2, ] 
+summary(gam.vsd.subset) 
+plotPCA(gam.vsd.subset, intgroup = "Treatment")
+
+resSigind = res[ which(res$padj < 0.05 & res$log2FoldChange > 0), ]
+resSigrep = res[ which(res$padj < 0.05 & res$log2FoldChange < 0), ]
+resSig = rbind(resSigind, resSigrep)
+allSig_genes <- rownames(resSig)
+
+write.csv(file = "gametophyte_freezing_DGEs.csv", as.data.frame(gamsigs))
+
+rld <- rlog(gam_deseq)
+rld_sign <- assay(rld)[allSig_genes,]
+topVarGenes <- head(order(rowVars((rld_sign)), decreasing=TRUE), 100)
+
+k <- pheatmap(rld_sign[topVarGenes,], scale = "row", kmeans_k = 3)
+clusterDF <- as.data.frame(factor(k$kmeans$cluster))
+colnames(clusterDF) <- "Cluster"
+
+OrderByCluster <- OrderByCluster <- rld_sign[topVarGenes,][order(clusterDF$Cluster),]
+
+pheatmap(OrderByCluster,
+         scale="row",annotation_row = clusterDF,
+         show_rownames = FALSE,cluster_rows = FALSE)
+```
+
+
+## Leaf freezing vs. control. 
+
+Now compare differentially expressed genes between treatments within leaf tissue. 
+
+```{r}
+########################
+### DGE of Leaf-Only ###
+########################
+
+leaf_count <- countData %>% 
+  dplyr::select(CREW2.3L, CREW2.4L, CREW2.29L, CREW2.33L, CREW2.34L, CREW3.21L)
+leaf_col <- coldata %>% 
+  filter(Tissue == "Leaf")
+
+leaf_dds <- DESeqDataSetFromMatrix(countData = leaf_count, colData = leaf_col, design =~ Treatment)
+leaf_dds$Treatment <- relevel(leaf_dds$Treatment, ref = "Control")
+leaf_dds
+
+leaf_deseq <-DESeq(leaf_dds)
+leaf_deseq
+
+res<-results(leaf_deseq, alpha = 0.05, lfcThreshold = 0)
+res
+summary(res)
+
+#out of 19533 with nonzero total read count
+#adjusted p-value < 0.05
+#LFC > 0 (up)       : 2042, 10%
+#LFC < 0 (down)     : 1861, 9.5%
+#outliers [1]       : 10, 0.051%
+#low counts [2]     : 1877, 9.6%
+#(mean count < 3)
+
+res_sigs<-subset(res, padj < 0.05)
+res_sigs
+
+upreg <- subset(res_sigs, log2FoldChange > 0); upreg
+leaf_upreg_genes <- rownames(upreg)
+
+downreg <- subset(res_sigs, log2FoldChange < 0); downreg
+leaf_down_genes <- rownames(downreg)
+
+DESeq2::plotMA(res, main = "Log2-Fold Change vs. Base Mean", ylim=c(-5,5))
+
+leaf_vsd<-vst(leaf_deseq) 
+leafsigs <-subset(res, padj < 0.05)
+leafsigs2<-rownames(leafsigs) 
+leaf.vsd.subset <- leaf_vsd[rownames(leaf_vsd) %in% leafsigs2, ] 
+summary(leaf.vsd.subset) 
+plotPCA(leaf.vsd.subset, intgroup = "Treatment")
+
+resSigind = res[ which(res$padj < 0.05 & res$log2FoldChange > 0), ]
+resSigrep = res[ which(res$padj < 0.05 & res$log2FoldChange < 0), ]
+resSig = rbind(resSigind, resSigrep)
+allSig_genes <- rownames(resSig)
+write.csv(file = "leaf_freezing_DGEs.csv", as.data.frame(leafsigs))
+
+rld <- rlog(leaf_deseq)
+rld_sign <- assay(rld)[allSig_genes,]
+topVarGenes <- head(order(rowVars((rld_sign)), decreasing=TRUE), 100)
+
+k <- pheatmap(rld_sign[topVarGenes,], scale = "row", kmeans_k = 3)
+clusterDF <- as.data.frame(factor(k$kmeans$cluster))
+colnames(clusterDF) <- "Cluster"
+
+OrderByCluster <- OrderByCluster <- rld_sign[topVarGenes,][order(clusterDF$Cluster),]
+
+pheatmap(OrderByCluster,
+         scale="row",annotation_row = clusterDF,
+         show_rownames = FALSE,cluster_rows = FALSE)
+
+
+```
+
+## Root freezing vs. control. 
+
+Now compare differentially expressed genes between treatments within root tissue. 
+
+```{r}
+#######################
+### DGE of Root-Only ###
+########################
+
+root_count <- countData %>% 
+  dplyr::select(CREW2.3R, CREW2.4R, CREW2.29R, CREW2.33R, CREW2.34R, CREW3.21R)
+root_col <- coldata %>% 
+  filter(Tissue == "Root")
+
+root_dds <- DESeqDataSetFromMatrix(countData = root_count, colData = root_col, design =~ Treatment)
+root_dds$Treatment <- relevel(root_dds$Treatment, ref = "Control")
+root_dds
+
+root_deseq <-DESeq(root_dds)
+root_deseq
+
+res<-results(root_deseq, alpha = 0.05, lfcThreshold = 0)
+res
+summary(res)
+
+#out of 19453 with nonzero total read count
+#adjusted p-value < 0.05
+#LFC > 0 (up)       : 216, 1.1%
+#LFC < 0 (down)     : 199, 1%
+#outliers [1]       : 86, 0.44%
+#low counts [2]     : 1869, 9.6%
+#(mean count < 4)
+
+res_sigs<-subset(res, padj < 0.05)
+res_sigs
+
+upreg <- subset(res_sigs, log2FoldChange > 0); upreg
+root_upreg_genes <- rownames(upreg)
+
+downreg <- subset(res_sigs, log2FoldChange < 0); downreg
+root_down_genes <- rownames(downreg)
+
+DESeq2::plotMA(res, main = "Log2-Fold Change vs. Base Mean", ylim=c(-5,5))
+
+root_vsd<-vst(root_deseq) 
+rootsigs <-subset(res, padj < 0.05)
+rootsigs2<-rownames(rootsigs) 
+root.vsd.subset <- root_vsd[rownames(root_vsd) %in% rootsigs2, ] 
+summary(root.vsd.subset) 
+plotPCA(root.vsd.subset, intgroup = "Treatment")
+
+write.csv(file = "root_freezing_DGEs.csv", as.data.frame(rootsigs))
+
+resSigind = res[ which(res$padj < 0.05 & res$log2FoldChange > 0), ]
+resSigrep = res[ which(res$padj < 0.05 & res$log2FoldChange < 0), ]
+resSig = rbind(resSigind, resSigrep)
+allSig_genes <- rownames(resSig)
+
+
+rld <- rlog(root_deseq)
+rld_sign <- assay(rld)[allSig_genes,]
+topVarGenes <- head(order(rowVars((rld_sign)), decreasing=TRUE), 100)
+
+k <- pheatmap(rld_sign[topVarGenes,], scale = "row", kmeans_k = 3)
+clusterDF <- as.data.frame(factor(k$kmeans$cluster))
+colnames(clusterDF) <- "Cluster"
+
+OrderByCluster <- OrderByCluster <- rld_sign[topVarGenes,][order(clusterDF$Cluster),]
+
+pheatmap(OrderByCluster,
+         scale="row",annotation_row = clusterDF,
+         show_rownames = FALSE,cluster_rows = FALSE)
+```
+
+We now want to compare the sets of genes that are differentially expressed between treatments within tissues that are shared between tissues. 
+
+```{r}
+#########################################################
+### Compare shared/different DGE genes in each tissue ###
+#########################################################
+
+gam_leaf <- intersect(gamsigs2, leafsigs2)
+gam_root <- intersect(gamsigs2, rootsigs2)
+leaf_root <- intersect(rootsigs2, leafsigs2)
+all <- intersect(intersect(gamsigs2, leafsigs2), rootsigs2)
+all
+```
+
+
+Let's look specifically at genes in stress response pathways. We are particularly interested in putative homologs of: 
+1. The CBF transcriptional regulation pathway
+2. AP/ERF genes 
+3. WRKY 
+
+```{r}
+LygoBlast <- read.delim("Lygo_Arabidopsis.blast") 
+ArabidopsisClass <- readxl::read_excel("CFB_Pathway/CBFReg_ArabidopsisGenes_CLassification.xlsx")
+LygodiumClassification <- inner_join(LygoBlast, ArabidopsisClass) %>% 
+  select(Gene, ArabidopsisGene, Classification, evalue) %>%
+  filter(evalue < 1e-5) %>% 
+  group_by(Gene) %>% 
+  arrange(evalue, .by_group = TRUE) %>% 
+  filter(row_number()==1)
+
+TRUECBFS <- read.delim("CFB_Pathway/CBF_ArabidopsisGenes.txt") #These are the actual CBF genes 
+LygodiumCBFs <- inner_join(LygoBlast, TRUECBFS) %>% 
+  select(Gene, ArabidopsisGene, evalue) %>%
+  filter(evalue < 1e-5) %>% 
+  group_by(Gene) %>% 
+  arrange(evalue, .by_group = TRUE) %>% 
+  filter(row_number()==1)
+
+gam_sigCBFs <- gamsigs2[gamsigs2 %in% LygodiumClassification$Gene]
+gam_sigCBFs_true <- gamsigs2[gamsigs2 %in% LygodiumCBFs$Gene] #none 
+leaf_sigCBFs <- leafsigs2[leafsigs2 %in% LygodiumClassification$Gene]
+leaf_sigCBFs_true <- leafsigs2[leafsigs2 %in% LygodiumCBFs$Gene]
+root_sigCBFs <- rootsigs2[rootsigs2 %in% LygodiumClassification$Gene]
+root_sigCBFs_true <- rootsigs2[rootsigs2 %in% LygodiumCBFs$Gene] #none
+
+## GAMETOPHYTE
+
+# Make heatmap of expression levels of actual CBF-realted genes:  
+gam_sigCBFs_classified <- filter(LygodiumClassification, Gene %in% gam_sigCBFs)
+gam_sigCBFs_exp <- gam_vsd[rownames(gam_vsd) %in% gam_sigCBFs_classified$Gene, ]
+pheatmap(assay(gam_sigCBFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly differentially expression CBF-related genes in the gametophyte")
+
+gam_upreg_CBFs <- gam_upreg_genes[gam_upreg_genes %in% LygodiumClassification$Gene]
+gam_upreg_CBFs_classified <- filter(LygodiumClassification, Gene %in% gam_upreg_CBFs)
+gam_upreg_CBFs_exp <- gam_vsd[rownames(gam_vsd) %in% gam_upreg_CBFs_classified$Gene, ]
+pheatmap(assay(gam_upreg_CBFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly upregulated CBF-related genes in the gametophyte")
+
+gam_downreg_CBFs <- gam_down_genes[gam_down_genes %in% LygodiumClassification$Gene]
+gam_downreg_CBFs_classified <- filter(LygodiumClassification, Gene %in% gam_downreg_CBFs)
+gam_downreg_CBFs_exp <- gam_vsd[rownames(gam_vsd) %in% gam_downreg_CBFs_classified$Gene, ]
+pheatmap(assay(gam_downreg_CBFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100),  
+         main = "Significantly downregulated CBF-related genes in the gametophyte")
+
+## LEAF 
+leaf_sigCBFs_classified <- filter(LygodiumClassification, Gene %in% leaf_sigCBFs)
+leaf_sigCBFs_exp <- leaf_vsd[rownames(leaf_vsd) %in% leaf_sigCBFs_classified$Gene, ]
+pheatmap(assay(leaf_sigCBFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly differentially expression CBF-related genes in the leaf")
+
+leaf_upreg_CBFs <- leaf_upreg_genes[leaf_upreg_genes %in% LygodiumClassification$Gene]
+leaf_upreg_CBFs_classified <- filter(LygodiumClassification, Gene %in% leaf_upreg_CBFs)
+leaf_upreg_CBFs_exp <- leaf_vsd[rownames(leaf_vsd) %in% leaf_upreg_CBFs_classified$Gene, ]
+pheatmap(assay(leaf_upreg_CBFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly upregulated CBF-related genes in the leaf")
+
+leaf_downreg_CBFs <- leaf_down_genes[leaf_down_genes %in% LygodiumClassification$Gene]
+leaf_downreg_CBFs_classified <- filter(LygodiumClassification, Gene %in% leaf_downreg_CBFs)
+leaf_downreg_CBFs_exp <- leaf_vsd[rownames(leaf_vsd) %in% leaf_downreg_CBFs_classified$Gene, ]
+pheatmap(assay(leaf_downreg_CBFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100),
+         main = "Significantly downregulated CBF-related genes in the leaf")
+
+## ROOTS 
+
+# Make heatmap of expression levles of actual CBF genes: 
+
+root_sigCBFs_classified <- filter(LygodiumClassification, Gene %in% root_sigCBFs)
+root_sigCBFs_exp <- root_vsd[rownames(root_vsd) %in% root_sigCBFs_classified$Gene, ]
+pheatmap(assay(root_sigCBFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly differentially expression CBF-related genes in the root")
+
+root_upreg_CBFs <- root_upreg_genes[root_upreg_genes %in% LygodiumClassification$Gene]
+root_upreg_CBFs_classified <- filter(LygodiumClassification, Gene %in% root_upreg_CBFs)
+root_upreg_CBFs_exp <- root_vsd[rownames(root_vsd) %in% root_upreg_CBFs_classified$Gene, ]
+pheatmap(assay(root_upreg_CBFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly upregulated CBF-related genes in the root")
+
+root_downreg_CBFs <- root_down_genes[root_down_genes %in% LygodiumClassification$Gene]
+root_downreg_CBFs_classified <- filter(LygodiumClassification, Gene %in% root_downreg_CBFs)
+root_downreg_CBFs_exp <- root_vsd[rownames(root_vsd) %in% root_downreg_CBFs_classified$Gene, ]
+pheatmap(assay(root_downreg_CBFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly upregulated CBF-related genes in the root")
+
+
+### ERF GENES 
+ERFs <- read.delim("CFB_Pathway/AP2-EREBPTranscriptionFactorFamily.txt") #These are the actual CBF genes 
+LygodiumERFs <- inner_join(LygoBlast, ERFs) %>% 
+  select(Gene, ArabidopsisGene, evalue, ClassificATion, Notes) %>%
+  filter(evalue < 1e-5) %>% 
+  group_by(Gene) %>% 
+  arrange(evalue, .by_group = TRUE) %>% 
+  filter(row_number()==1)
+
+gam_sigERFs <- gamsigs2[gamsigs2 %in% LygodiumERFs$Gene]
+leaf_sigERFs <- leafsigs2[leafsigs2 %in% LygodiumERFs$Gene]
+root_sigERFs <- rootsigs2[rootsigs2 %in% LygodiumERFs$Gene]
+
+gam_sigERFs_exp <- gam_vsd[rownames(gam_vsd) %in% gam_sigERFs, ]
+pheatmap(assay(gam_sigERFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly differentially expression ERF genes in the gametophyte")
+
+leaf_sigERFs_exp <- leaf_vsd[rownames(leaf_vsd) %in% leaf_sigERFs, ]
+pheatmap(assay(leaf_sigERFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly differentially expression ERF genes in the leaf")
+
+root_sigERFs_exp <- root_vsd[rownames(root_vsd) %in% root_sigERFs, ]
+pheatmap(assay(root_sigERFs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly differentially expression ERF genes in the root")
+
+
+## WRKY Genes 
+WRKY <- read.delim("CFB_Pathway/WrkySuperFamily.txt") #These are the actual CBF genes 
+LygodiumWRKYs <- inner_join(LygoBlast, WRKY) %>% 
+  select(Gene, ArabidopsisGene, evalue, ProteinName, Group) %>%
+  filter(evalue < 1e-5) %>% 
+  group_by(Gene) %>% 
+  arrange(evalue, .by_group = TRUE) %>% 
+  filter(row_number()==1)
+
+gam_sigWRKYs <- gamsigs2[gamsigs2 %in% LygodiumWRKYs$Gene]
+leaf_sigWRKYs <- leafsigs2[leafsigs2 %in% LygodiumWRKYs$Gene]
+root_sigWRKYs <- rootsigs2[rootsigs2 %in% LygodiumWRKYs$Gene]
+
+gam_sigWRKYs_exp <- gam_vsd[rownames(gam_vsd) %in% gam_sigWRKYs, ]
+pheatmap(assay(gam_sigWRKYs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+        main = "Significantly differentially expression WRKY genes in the gametophyte")
+
+leaf_sigWRKYs_exp <- leaf_vsd[rownames(leaf_vsd) %in% leaf_sigWRKYs, ]
+pheatmap(assay(leaf_sigWRKYs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly differentially expression WRKY genes in the leaf")
+
+root_sigWRKYs_exp <- root_vsd[rownames(root_vsd) %in% root_sigWRKYs, ]
+pheatmap(assay(root_sigWRKYs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly differentially expression WRKY genes in the root")
+
+```
+
+
+What about the actual cold-regulated genes? Let's look at the COR genes in Arabidopsis to see if there is differences in expression in Lygodium homologs. 
+
+```{r}
+COR <- read.delim("CFB_Pathway/CORGenes.txt") #These are the actual CBF genes 
+LygodiumCORs <- inner_join(LygoBlast, COR) %>% 
+  select(Gene, ArabidopsisGene, evalue, Name) %>%
+  filter(evalue < 1e-5) %>% 
+  group_by(Gene) %>% 
+  arrange(evalue, .by_group = TRUE) %>% 
+  filter(row_number()==1)
+
+gam_sigCORs <- gamsigs2[gamsigs2 %in% LygodiumCORs$Gene]
+leaf_sigCORs <- leafsigs2[leafsigs2 %in% LygodiumCORs$Gene]
+root_sigCORs <- rootsigs2[rootsigs2 %in% LygodiumCORs$Gene]
+
+
+leaf_sigCORs_exp <- leaf_vsd[rownames(leaf_vsd) %in% leaf_sigCORs, ]
+pheatmap(assay(leaf_sigCORs_exp),
+         scale="row",  
+         show_rownames = TRUE,cluster_rows = FALSE, treeheight_col = 0,
+         color = colorRampPalette(c("gray18", "dodgerblue2", "gold"))(100), 
+         main = "Significantly differentially expressed COR genes in the leaf")
+
+```
+Run KEGG Enrichment Analysis, using Arabidopsis as the supported organism. 
+
+```{r}
+library(clusterProfiler)
+library(pathview)
+
+lygo_genes_AT <- LygoBlast %>% 
+  dplyr::select(Gene, ArabidopsisGene, evalue) %>%
+  filter(evalue < 1e-5) %>% 
+  group_by(Gene) %>% 
+  arrange(evalue, .by_group = TRUE) %>% 
+  filter(row_number()==1)
+
+## GAMETOPHYTE GENE SETS 
+gam_siggenes_exp <- as.data.frame(gamsigs$log2FoldChange)
+colnames(gam_siggenes_exp) <- "Log2FC"
+gam_siggenes_exp$Gene <- rownames(gamsigs)
+gam_siggenes_exp_AT <- inner_join(gam_siggenes_exp, lygo_genes_AT)
+
+gam_upreg <- gam_siggenes_exp_AT %>% 
+  filter(Log2FC > 0)
+
+kegg <- enrichKEGG(gene = gam_upreg$ArabidopsisGene, organism = "ath", pvalueCutoff = 0.05)
+kegg
+
+gam_up_lfc <- gam_upreg$Log2FC
+names(gam_up_lfc) <- gam_upreg$ArabidopsisGene
+
+browseKEGG(kegg, "ath00500")
+
+# ATH00500: AMYLOSE AND SURCOSE METABOLISM PATHWAY
+#   fold enrichment = 3.6143895, adjusted p-value = 1.27e-02
+ath00500 <- pathview(gene.data  = gam_up_lfc,
+                     pathway.id = "ath00500",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+# These are not significant after p-value adjustment, but still interesting: 
+
+# ATH04016: MAPK signaling pathway
+#   fold enrichment = 0.9593750, adjusted p-value = 7.466036e-01
+ath04016 <- pathview(gene.data  = gam_up_lfc,
+                     pathway.id = "ath04016",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+# ATH04075: Plant hormone signal transduction 
+#   fold enrichment = 0.5079044, adjusted p-value = 9.563513e-01
+ath04075 <- pathview(gene.data  = gam_up_lfc,
+                     pathway.id = "ath04075",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+
+gam_downreg <- gam_siggenes_exp_AT %>% 
+  filter(Log2FC < 0)
+
+kegg <- enrichKEGG(gene = gam_downreg$ArabidopsisGene, organism = "ath", pvalueCutoff = 0.05)
+kegg
+
+gam_down_lfc <- gam_downreg$Log2FC
+names(gam_down_lfc) <- gam_downreg$ArabidopsisGene
+
+#ATH00940: Phenylpropanoid biosynthesis
+#   Fold enrichment = 6.82, adjusted p-value=3.64e-08
+ath00940 <- pathview(gene.data  = gam_down_lfc,
+                     pathway.id = "ath00940",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+# ATH00910: Nitrogen metabolism
+#   Fold enrichment = 9.29, adjusted p-value=3.74e-05 
+ath00910 <- pathview(gene.data  = gam_down_lfc,
+                     pathway.id = "ath00910",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+# ATH00941: Flavonoid biosynthesis
+#   Fold enrichment = 10.65, adjusted p-value=4.71e-04
+ath00941 <- pathview(gene.data  = gam_down_lfc,
+                     pathway.id = "ath00941",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+## ** ## 
+
+## LEAF GENE SETS 
+leaf_siggenes_exp <- as.data.frame(leafsigs$log2FoldChange)
+colnames(leaf_siggenes_exp) <- "Log2FC"
+leaf_siggenes_exp$Gene <- rownames(leafsigs)
+leaf_siggenes_exp_AT <- inner_join(leaf_siggenes_exp, lygo_genes_AT)
+
+leaf_upreg <- leaf_siggenes_exp_AT %>% 
+  filter(Log2FC > 0)
+
+kegg <- enrichKEGG(gene = leaf_upreg$ArabidopsisGene, organism = "ath", pvalueCutoff = 0.05)
+kegg
+
+leaf_up_lfc <- leaf_upreg$Log2FC
+names(leaf_up_lfc) <- leaf_upreg$ArabidopsisGene
+
+# ATH03010: Ribosome
+#   Fold enrichment = 3.03, adjusted p-value=1.81e-19
+ath03010 <- pathview(gene.data  = leaf_up_lfc,
+                     pathway.id = "ath03010",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+
+leaf_downreg <- leaf_siggenes_exp_AT %>% 
+  filter(Log2FC < 0)
+
+kegg <- enrichKEGG(gene = leaf_downreg$ArabidopsisGene, organism = "ath", pvalueCutoff = 0.05)
+kegg
+
+browseKEGG(kegg, "ath00500")
+
+leaf_down_lfc <- leaf_downreg$Log2FC
+names(leaf_down_lfc) <- leaf_downreg$ArabidopsisGene
+
+# ath03013: Nucleocytoplasmic transport
+#   Fold enrichment = 2.63, adjusted p-value=0.0131
+ath03013 <- pathview(gene.data  = leaf_down_lfc,
+                     pathway.id = "ath03013",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+# ath00860: Porphyrin metabolism
+#   Fold enrichment = 3.23, adjusted p-value=0.0131
+ath00860 <- pathview(gene.data  = leaf_down_lfc,
+                     pathway.id = "ath00860",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+# ath00620: Pyruvate metabolism
+#   Fold enrichment = 2.53, adjusted p-value=0.017
+ath00620 <- pathview(gene.data  = leaf_down_lfc,
+                     pathway.id = "ath00620",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+# ath00500: Starch and sucrose metabolism
+#   Fold enrichment = 1.96, adjusted p-value=0.0454
+ath00500 <- pathview(gene.data  = leaf_down_lfc,
+                     pathway.id = "ath00500",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(gam_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+## ** ## 
+
+## ROOT GENE SETS 
+root_siggenes_exp <- as.data.frame(rootsigs$log2FoldChange)
+colnames(root_siggenes_exp) <- "Log2FC"
+root_siggenes_exp$Gene <- rownames(rootsigs)
+root_siggenes_exp_AT <- inner_join(root_siggenes_exp, lygo_genes_AT)
+
+root_upreg <- root_siggenes_exp_AT %>% 
+  filter(Log2FC > 0)
+
+kegg <- enrichKEGG(gene = root_upreg$ArabidopsisGene, organism = "ath", pvalueCutoff = 0.05)
+kegg
+
+root_up_lfc <- root_upreg$Log2FC
+names(root_up_lfc) <- root_upreg$ArabidopsisGene
+
+# ath04075: Plant hormone signal transduction
+#   Fold enrichment = 4.23, adjusted p-value=0.000027
+ath04075 <- pathview(gene.data  = root_up_lfc,
+                     pathway.id = "ath04075",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(root_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+# ath00906: Carotenoid biosynthesis
+#   Fold enrichment = 11.91, adjusted p-value=0.027814
+ath00906 <- pathview(gene.data  = root_up_lfc,
+                     pathway.id = "ath00906",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(root_up_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+browseKEGG(kegg, "ath04075")
+
+root_downreg <- root_siggenes_exp_AT %>% 
+  filter(Log2FC < 0)
+
+kegg <- enrichKEGG(gene = root_downreg$ArabidopsisGene, organism = "ath", pvalueCutoff = 0.05)
+kegg
+
+root_down_lfc <- root_downreg$Log2FC
+names(root_down_lfc) <- root_downreg$ArabidopsisGene
+
+ath00910 <- pathview(gene.data  = root_down_lfc,
+                     pathway.id = "ath00910",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(root_down_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+ath00330 <- pathview(gene.data  = root_down_lfc,
+                     pathway.id = "ath00330",
+                     species    = "ath",
+                     limit      = list(gene=max(abs(root_down_lfc)), cpd=1), gene.idtype = "KEGG", 
+                     low=list(gene="steelblue"),
+                     high=list(gene="gold"))
+
+```
+
+
+Let's dig into the expression levels of the Starch and Sucrose Metabolism Pathway: 
+
+```{r}
+SSM <- readxl::read_excel("StarchSucrosePathway.xlsx")
+
+LygodiumSSM <- inner_join(LygoBlast, SSM) %>% 
+  select(Gene, ArabidopsisGene, evalue, Name) %>%
+  filter(evalue < 1e-5) %>% 
+  group_by(Gene) %>% 
+  arrange(evalue, .by_group = TRUE) %>% 
+  filter(row_number()==1)
+
+gam_sigSSM <- gamsigs2[gamsigs2 %in% LygodiumSSM$Gene]
+leaf_sigSSM <- leafsigs2[leafsigs2 %in% LygodiumSSM$Gene]
+root_sigSSM <- rootsigs2[rootsigs2 %in% LygodiumSSM$Gene]
+
+# I want to plot a heatmap of log2foldchange values in the starch + sucrose metabolism pathway
+
+gam_sigSSM_exp <- gamsigs[rownames(gamsigs) %in% gam_sigSSM, ]
+gam_sigSSM_df <- as.data.frame(gam_sigSSM_exp$log2FoldChange, row.names = rownames(gam_sigSSM_exp))
+
+leaf_sigSSM_exp <- leafsigs[rownames(leafsigs) %in% leaf_sigSSM, ]
+leaf_sigSSM_df <- as.data.frame(leaf_sigSSM_exp$log2FoldChange, row.names = rownames(leaf_sigSSM_exp))
+
+root_sigSSM_exp <- rootsigs[rownames(rootsigs) %in% root_sigSSM, ]
+root_sigSSM_df <- as.data.frame(root_sigSSM_exp$log2FoldChange, row.names = rownames(root_sigSSM_exp))
+
+t <- merge(gam_sigSSM_df, leaf_sigSSM_df, by =0, all=TRUE)
+rownames(t) <- t[,1]
+t <- select(t, 'gam_sigSSM_exp$log2FoldChange','leaf_sigSSM_exp$log2FoldChange')
+t[is.na(t)] <- 0 
+
+mat <- as.matrix(t)
+
+heatmap.2(as.matrix(t), col=colorRampPalette(c("gray18", "dodgerblue2", "gold"))(15), 
+          trace = "none", density.info = "none")
+
+res<-results(gam_deseq, alpha = 0.05, lfcThreshold = 0)
+res
+
+gam_SSM_exp <- res[rownames(res) %in% LygodiumSSM$Gene, ]
+gam_SSM_df <- as.data.frame(gam_SSM_exp$log2FoldChange, row.names = rownames(gam_SSM_exp))
+
+res<-results(leaf_deseq, alpha = 0.05, lfcThreshold = 0)
+res
+
+leaf_SSM_exp <- res[rownames(res) %in% LygodiumSSM$Gene, ]
+leaf_SSM_df <- as.data.frame(leaf_SSM_exp$log2FoldChange, row.names = rownames(leaf_SSM_exp))
+
+t <- merge(gam_SSM_df, leaf_SSM_df, by =0, all=TRUE)
+rownames(t) <- t[,1]
+t <- select(t, 'gam_SSM_exp$log2FoldChange','leaf_SSM_exp$log2FoldChange')
+t[is.na(t)] <- 0 
+
+mat <- as.matrix(t)
+
+heatmap.2(as.matrix(t), col=colorRampPalette(c("gray18", "dodgerblue2", "gold"))(15), 
+          trace = "none", density.info = "none")
+```

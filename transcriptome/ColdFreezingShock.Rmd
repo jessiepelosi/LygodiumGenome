@@ -1,0 +1,187 @@
+---
+title: "Cold and Freezing Shock Experiments"
+author: "Jessie Pelosi"
+date: "2024-11-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(AICcmodavg)
+library(jtools)
+library(Rmisc)
+library(readxl)
+library(emmeans)
+library(readxl)
+```
+
+## Experiment 1: Cold Stress and Recovery 
+
+
+```{r}
+
+ColdStress <- read.csv("../coldstress_experiments/ColdStressPhysio.csv")
+
+# Read in DF with new column for plotting, nothing else is different. 
+ColdStress_NewCol <- read.csv("../coldstress_experiments/ColdStressPhysioNewCol.csv")
+ColdStress_MIC <- ColdStress_NewCol %>% 
+  filter(Species == 'microphyllum')
+ColdStress_MIC$Y.II. <- as.numeric(ColdStress_MIC$Y.II.)
+# Make treatments and species/stage variables
+ColdStress_MIC$Treatment <- factor(ColdStress_MIC$Treatment, levels = c("Control", "2C_12hr", "2C_36hr", "2C_60hr", "2C_84hr",
+                                      "Recov_1hr", "Recov_4hr", "Recov_24hr"))
+ColdStress_MIC$Species.Stage <- factor(ColdStress_MIC$Species.Stage, 
+                                          levels = c("microphyllum_s", "microphyllum_g"))
+
+sum <- summarySE(ColdStress_MIC, measurevar="Y.II.", groupvars=c("Treatment","Species.Stage", "TimePoint"))
+
+# Plot line graph 
+ggplot() + 
+  geom_errorbar(data = sum, aes(ymin = Y.II. - se, ymax = Y.II. + se, x = TimePoint, y = Y.II., color = Species.Stage), alpha = .33) +
+  geom_line(data = ColdStress_MIC, mapping = aes(x = TimePoint, y = Y.II., color = Species.Stage), stat = "summary", size = 1) + 
+  labs(y=expression("F"[v]/"F"[m])) + theme_classic() + xlab("Hour") + 
+ # scale_linetype_manual(values=c("Gametophyte" = "dashed", "Sporophyte"="solid")) + 
+  scale_color_manual(values = c(microphyllum_g = "steelblue3", microphyllum_s = "indianred3" )) +
+  theme(legend.position = "no")
+
+ggsave("2C_stress_microphyllumOnly.pdf", height = 4, width = 6)
+
+#Subset for recovery plot
+Cold.Recov <- ColdStress_MIC %>% 
+  filter(Treatment == "2C_84hr"| Treatment == "Recov_1hr" | Treatment == "Recov_4hr" | Treatment =="Recov_24hr")
+
+recov.sum <- summarySE(Cold.Recov, measurevar="Y.II.", groupvars=c("Treatment","Species.Stage", "TimePoint"))
+
+ggplot() + 
+  geom_errorbar(data = recov.sum, aes(ymin = Y.II. - se, ymax = Y.II. + se, x = TimePoint, y = Y.II., color = Species.Stage), alpha = .33) +
+  geom_line(data = Cold.Recov, mapping = aes(x = TimePoint, y = Y.II., color = Species.Stage, linetype = Stage), stat = "summary", size = 1) + 
+  labs(y=expression("F"[v]/"F"[m])) + theme_classic() + xlab("Hour") + 
+  scale_linetype_manual(values=c("Gametophyte" = "dashed", "Sporophyte"="solid")) + 
+  scale_color_manual(values = c(microphyllum_g = "steelblue3", microphyllum_s = "indianred3" )) +
+  theme(legend.position = "none")
+
+ggsave("2C_recovery_microphyllumOnly.pdf", width = 6, height = 4)
+
+# Subset DF to include only coldstress portion 
+ColdOnly <- ColdStress_NewCol %>% 
+  filter(Treatment == "Control" | Treatment == "2C_12hr" | Treatment =="2C_36hr" | Treatment == "2C_60hr" | Treatment == "2C_84hr" )
+
+ColdOnly.lm <- lm(Y.II. ~ TimePoint + Species + Stage + TimePoint:Species + Species:Stage + TimePoint:Stage, data = ColdOnly)
+plot(ColdOnly.lm)
+summ(ColdOnly.lm); AICc(ColdOnly.lm) #-493.1531
+```
+
+## Experiment 2: Freezing Shock and Recovery 
+
+```{r}
+FreezingStress <- read_excel("../coldstress_experiments/Lygodium freezing Nov25.xlsx")
+
+freeze_sum <- summarySE(FreezingStress, measurevar="YII", groupvars=c("Treatment","SpStage", "TimePoint"))
+
+freezing_only_mic <- FreezingStress %>% 
+  filter(TimePoint == 0 | TimePoint == 2) %>% 
+  filter(Species == 'microphyllum')
+
+microphyllum_only <- FreezingStress %>% 
+  filter(Species == "microphyllum")
+
+freeze_sum <- summarySE(microphyllum_only, measurevar="YII", groupvars=c("Treatment","SpStage", "TimePoint"))
+
+ggplot() + 
+  geom_errorbar(data = freeze_sum, aes(ymin = YII - se, ymax = YII + se, x = TimePoint, y = YII, color = SpStage), alpha = .33) +
+  geom_line(data = microphyllum_only, mapping = aes(x = TimePoint, y = YII, color = SpStage), stat = "summary", size = 1) + 
+  labs(y = expression(F[v]/F[m])) + theme_classic() + xlab("Hour") + 
+  #scale_linetype_manual(values=c("Gametophyte" = "dashed", "Sporophyte"="solid")) + 
+  scale_color_manual(values = c(microphyllum_g = "steelblue3", microphyllum_s = "indianred3" )) +
+  theme(legend.position = "none")
+
+ggsave("microphyllum_freezing.pdf", height = 4, width=6)
+
+FreezeOnly.lm <- lm(YII ~ TimePoint + Stage + TimePoint:Stage, data = freezing_only_mic)
+summ(FreezeOnly.lm)
+
+recovery_only_mic <- FreezingStress %>% 
+  filter(TimePoint == 3 | TimePoint == 6 | TimePoint == 26) %>% 
+  filter(Species == 'microphyllum')
+
+RecovOnly.lm <- lm(YII ~ TimePoint + Stage + TimePoint:Stage, data = recovery_only_mic)
+summ(RecovOnly.lm)
+
+emmeans(RecovOnly.lm, pairwise ~ TimePoint:Stage)
+```
+## Experiment 3: Electrolyte Leakage
+
+```{r}
+el <- read.csv("../coldstress_experiments/electrolyte_leakage.csv", header = T)
+
+el$ELNorm[el$ELNorm<0] <- 0
+el$ELNormMean <- as.numeric(el$ELNormMean)
+el$ELNormMean[el$ELNormMean < 0] <- NA
+el$Treatment <- as.numeric(el$Treatment)
+el$Ploidy <- as.numeric(el$Ploidy)
+
+sum <- summarySE(el, measurevar="ELNormMean", groupvars=c("Treatment","Stage"))
+
+ggplot() +
+  geom_point(data = sum, mapping = aes(x = Treatment, y = ELNormMean, color = Stage)) + 
+  geom_smooth(data = el, mapping = aes(x = Temperature, y = ELNormMean, color = Stage),
+              se = F, method = "nls", formula = y ~ SSlogis(x, Asym, b2, b3)) +
+  theme_classic() + xlab("Temperature") + ylab("% Normalized Electrolyte Leakage") +
+  #scale_linetype_manual(values=c(Gametophyte = "dashed", Sporophyte="solid")) + 
+  scale_color_manual(values = c(Gametophyte = "steelblue3", Sporophyte = "indianred3" )) +
+  theme(legend.position = "none") + ylim(0,100)
+
+ggsave("ElectrolyteLeakage.pdf", height =4, width = 6)
+
+# Generate m0 with all data and compare models 
+# Comparing nls models: 
+# https://stats.stackexchange.com/questions/458195/compare-non-linear-model-parameter-estimates-between-conditions 
+
+nls.control(warnOnly = F, minFactor = 1/2084)
+fo <- ELNormMean ~ SSlogis(Temperature, Asym, xmid, scal)
+m1 <- nls(fo, el, subset = Ploidy == 1)
+m2 <- nls(fo, el, subset = Ploidy == 2)
+
+Logis <- function(x, Asym, xmid, scal) Asym / (1 + exp((xmid - x)/ scal))
+
+m12 <- nls(ELNormMean ~ Logis(Temperature, Asym[Ploidy], xmid[Ploidy], scal[Ploidy]),
+           transform(el, Ploidy = as.numeric(as.character(Ploidy))), 
+           subset = Ploidy %in% 1:2, 
+           start = as.data.frame(rbind(coef(m1), coef(m2))))
+summary(m12)
+m0 <- nls(fo, el, subset = Ploidy %in% 1:2)
+summary(m0)
+
+av <-  anova(m0, m12)
+av
+
+# Generate df for gametophyte data 
+gametophyte <- el %>% 
+  filter(Stage == "Gametophyte") %>% 
+  dplyr::select(Treatment, Temperature, ELNormMean)
+
+# Run logistic non-linear regression for gametophyte-only data 
+# asym: asymptote
+# xmid: inflection point of the curve (asym/2)
+# scal: scale parameter on input axis 
+gfit <- nls(ELNormMean ~ SSlogis(Temperature, Aysm, xmid, scal), data = gametophyte)
+summary(gfit)
+
+ggompt <- nls(ELNormMean ~ SSgompertz(abs(Temperature), Asym, b2, b3), data = gametophyte)
+summary(ggompt)
+
+# Generate df for sporophyte data 
+sporo <- el %>% 
+  filter(Stage == "Sporophyte") %>% 
+  dplyr::select(Treatment, Temperature, ELNormMean) 
+
+# Run logistic non-linear regression for sporophyte-only data
+sfit <- nls(abs(ELNormMean) ~ SSlogis(Temperature, Aysm, xmid, scal), data = sporo)
+summary(sfit)
+
+#sgompt <- nls(ELNormMean ~ SSgompertz(Temperature, 71.5, b2, b3), data = sporo)
+#summary(sgompt)
+```
+

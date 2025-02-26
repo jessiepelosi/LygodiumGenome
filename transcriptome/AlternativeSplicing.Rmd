@@ -1,0 +1,67 @@
+---
+title: "AlternativeSplicing"
+author: "Jessie Pelosi"
+date: "2024-11-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+```
+
+# Alternative Splicing
+
+# Let's start by comparing splicing events in the control gametophyte and sporophyte tissues. We will first read in some result files from PASA for merged RNASeq libraries for each control tissue type after filtering for junction support. 
+
+```{r}
+
+control_gam <- read.delim("altSplicing/control_gametophyte_junction_supported.xls")
+control_leaf <- read.delim("altSplicing/control_leaf_junction_supported.xls")
+
+shared <- inner_join(control_gam, control_leaf, by = "AS_event_name")
+
+write.csv(file = "shared_events_control_gam_spor.csv", shared, quote = FALSE)
+
+unique_gam <- subset(control_gam, !(AS_event_name %in% control_leaf$AS_event_name))
+
+write.csv(file = "unique_events_control_gam.csv", unique_gam, quote = FALSE)
+
+unique_leaf <- subset(control_leaf, !(AS_event_name %in% control_gam$AS_event_name))
+
+write.csv(file = "unique_events_control_leaf.csv", unique_leaf, quote = FALSE)
+
+
+```
+## Functional Assessment 
+
+Can we say anything about putative functions of the splicing events? Are there specific types of genes that are uniquely spliced in each life phase? 
+
+```{r}
+homeobox <- read.delim("homeobox/Lygodium_homeobox_genes.txt")
+
+unique_gam$Gene <- unique_gam$Gene_name
+
+gam_hom_spliced <- inner_join(unique_gam, homeobox, by = "Gene")
+
+unique_leaf$Gene <- unique_leaf$Gene_name
+
+leaf_hom_spliced <- inner_join(unique_leaf, homeobox, by = "Gene")
+
+#g3472 is more highly expressed in gametophyte and has a unique isoform in the leaf (exon skipping)! 
+#g22068 is more highly expressed in the leaf and has a unique isoform in the leaf (exon skipping)! 
+
+Lygodium_MADS_ClassifiedByPhy <- read.delim("MADS-BOX/LygodiumMADS_Classified.txt")
+
+gam_mads_spliced <- inner_join(unique_gam, Lygodium_MADS_ClassifiedByPhy, by = "Gene")
+
+leaf_mads_spliced <- inner_join(unique_leaf, Lygodium_MADS_ClassifiedByPhy, by = "Gene")
+
+# 1 gene is uniquely spliced in the leaf: g13430
+# 4 genes are uniquely spliced in the gametophyte: 
+#   g4788, g13430, g12750, g4786
+
+# None of these genes are differentially expressed between gam/leaf tissues 
+
+
+```

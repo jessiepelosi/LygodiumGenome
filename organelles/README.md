@@ -21,9 +21,9 @@ perl PGA.pl -r plastomes/ -t Lygodium_microphyllum_plastome.fasta
 We used HISAT2 v to align RNASeq reads from each of the 32 libraries to the organelle genome assemblies. Note that this analysis is not presented in the publication but may be useful to others. 
 
 ```
-hisat2-build Lygodium_microphyllum_mt.fasta Lygodium_microphyllum_mt.HT
-hisat2 -x Lygodium_cp.HT -1 ./RNA_seq/trimmed_reads/"$file"/"$file"_1P.fq.gz -2 ./RNA_seq/trimmed_reads/"$file"/"$file"_2P.fq.gz --threads 24 -S "$file"_to_mt.sam
-samtools view -bS "$file"_to_mt.sam | samtools sort > "$file"_to_mt.sort.bam
+hisat2-build Lygodium_microphyllum_cp.fasta Lygodium_microphyllum_cp.HT
+hisat2 -x Lygodium_cp.HT -1 ./RNA_seq/trimmed_reads/"$file"/"$file"_1P.fq.gz -2 ./RNA_seq/trimmed_reads/"$file"/"$file"_2P.fq.gz --threads 24 -S "$file"_to_cp.sam
+samtools view -bS "$file"_to_cp.sam | samtools sort > "$file"_to_cp.sort.bam
 ```
 The reference organelle genomes were indexed with samtools v1.15.1 and variants were called with bcftools v1.15.
 ```

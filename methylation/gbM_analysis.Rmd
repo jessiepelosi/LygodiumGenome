@@ -1,0 +1,639 @@
+---
+title: "gbM_analysis"
+author: "Jessie Pelosi"
+date: "2024-11-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(perm)
+```
+
+## Gene Body Methylation (gbM) in Lygodium 
+
+# Get general statistics 
+
+In total, there are 2033 BM genes that are shared by all 3 gametophyte libraries and 162 that are shared by all leaf libraries. There were 10101 UM genes that are shared by all 3 gametophyte libraries and 16125 that are shared by all leaf libraries. 
+
+```{r}
+
+LYMIG1.BM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-G1.BM.csv", row.names = 1)
+LYMIG2.BM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-G2.BM.csv", row.names = 1)
+LYMIG4.BM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-G4.BM.csv", row.names = 1)
+
+LYMIG1.UM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-G1.UM.csv", row.names = 1)
+LYMIG2.UM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-G2.UM.csv", row.names = 1)
+LYMIG4.UM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-G4.UM.csv", row.names = 1)
+
+gam_tmp <- inner_join(LYMIG1, LYMIG2, by = "V15")
+gam_BM <- inner_join(gam_tmp, LYMIG4, by = "V15") #2033 genes 
+
+write.csv(file="all_BM_genes_gam.csv", gam_BM)
+
+gam_tmp <- inner_join(LYMIG1.UM, LYMIG2.UM, by = "V15")
+gam_UM <- inner_join(gam_tmp, LYMIG4.UM, by = "V15") #10101 genes 
+
+LYMIS1.BM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-S1.BM.csv", row.names=1) #278
+LYMIS2.BM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-S2.BM.csv", row.names=1) #509
+LYMIS3.BM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-S3.BM.csv", row.names=1) #186
+
+LYMIS1.UM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-S1.UM.csv",row.names = 1) #17095
+LYMIS2.UM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-S2.UM.csv",row.names = 1) #17928
+LYMIS3.UM <- read.csv("methylation/Lygodium/v1.1.9/LYMI-S3.UM.csv",row.names = 1) #17232
+
+leaf_tmp <- inner_join(LYMIS1.BM, LYMIS2.BM, by = "V15")
+leaf_BM <- inner_join(leaf_tmp, LYMIS3.BM, by = "V15") #162 
+
+write.csv(file="all_BM_genes_leaf.csv", leaf_BM)
+
+leaf_tmp <- inner_join(LYMIS1.UM, LYMIS2.UM, by = "V15")
+leaf_UM <- inner_join(leaf_tmp, LYMIS3.UM, by = "V15") #16125
+
+# Compare which BM/UM genes overlap 
+inner_join(leaf_BM, gam_BM, by = "V15") #144
+inner_join(leaf_UM, gam_UM, by = "V15") #9915 
+ 
+
+```
+
+
+# Gene Lengths 
+
+We will now compare the lengths of the BM and UM genes using a permutation test. 
+
+```{r}
+all_genes <- read.delim("methylation/Lygodium/v1.1.9/braker.gene.gff3", header = F)
+colnames(all_genes) <- c("Scaffold", "Source", "Feature","Start", "End", "NA", "Strand", "NA2", "V15")
+all_genes$len <- all_genes$End - all_genes$Start + 1
+
+gam_BM_lens <- inner_join(gam_BM, all_genes, by = "V15")
+leaf_BM_lens <- inner_join(leaf_BM, all_genes, by = "V15")
+
+gam_UM_lens <- inner_join(gam_UM, all_genes, by = "V15")
+leaf_UM_lens <- inner_join(leaf_UM, all_genes, by = "V15")
+
+
+mean(all_genes$len) #20053.03 [includes intron + exon] = 20kb
+
+mean(gam_BM_lens$len) #66531.37 [includes intron + exon] = 66kb
+mean(leaf_BM_lens$len) #113966.6 [includes intron + exon] = 113kb 
+
+mean(gam_UM_lens$len) #3248.67 [includes intron + exon] =3kb 
+mean(leaf_UM_lens$len) #12746.11 [includes intron + exon] =12kb 
+ 
+
+permTS(gam_BM_lens$len, gam_UM_lens$len,method='exact.mc')
+
+permTS(leaf_BM_lens$len, leaf_UM_lens$len, method = 'exact.mc')
+
+permTS(gam_BM_lens$len, leaf_BM_lens$len, method = 'exact.mc')
+
+ggplot() + geom_density(data = gam_UM_lens, mapping = aes(x = len), color = "black", fill = "lightblue",
+                        alpha = 0.5) + 
+  geom_density(data = gam_BM_lens, mapping = aes(x = len), color = "black", fill = "steelblue3", 
+               alpha = 0.75) +
+  geom_density(data = leaf_UM_lens, aes(x = len), color = "black", fill = "pink",
+                       alpha = 0.5) +
+  geom_density(data = leaf_BM_lens, aes(x = len), color = "black", fill = "indianred3",
+                       alpha = 0.65) +
+    theme_bw()  + xlab("Gene Length (bp)") + ylab("Frequency") + scale_x_log10()
+
+
+ggsave("BM-UM.genelens.pdf", width = 6, height = 4)
+
+
+ggplot() + geom_histogram(data = gam_UM_lens, mapping = aes(x = len), color = "black", fill = "lightblue",alpha = 0.5, bins = 100) + 
+  geom_histogram(data = gam_BM_lens, mapping = aes(x = len), color = "black", fill = "dodgerblue4", alpha = 0.75, bins = 100) +
+  geom_histogram(data = leaf_UM_lens, mapping = aes(x=len), color = "black", fill = "pink", alpha = 0.5, bins = 100) +
+    theme_bw()  + xlab("Gene Length (bp)") + ylab("Count") + scale_x_log10()
+
+```
+
+# Number of Exons 
+
+We will now compare the number of exons in the BM and UM genes. 
+
+```{r}
+library(GenomicFeatures)
+library(txdbmaker)
+
+gff <- makeTxDbFromGFF(file="braker.gff3", format = "gff")
+
+library(ggplot2)
+# group the exons by transcript
+exons <- exonsBy(gff, by = "gene")
+# make a data frame with transcripts and exon count
+exons.tx <- data.frame(tx = 1:length(exons), exons = sapply(exons, length))
+
+exons.tx$gene = rownames(exons.tx)
+
+# Edit the names of the genes to remove ID= and ; in the BM and UM dfs  
+
+gam_BM$gene <- gsub("ID=","",gam_BM$V15) %>% 
+  gsub(";","", .)
+
+gam_UM$gene <- gsub("ID=","",gam_UM$V15) %>% 
+  gsub(";","", .)
+
+leaf_UM$gene <- gsub("ID=","",leaf_UM$V15) %>% 
+  gsub(";","", .)
+
+leaf_BM$gene <- gsub("ID=","",leaf_BM$V15) %>% 
+  gsub(";","", .)
+
+gam_BM_exons <- inner_join(gam_BM, exons.tx, by = "gene")
+gam_UM_exons <- inner_join(gam_UM, exons.tx, by = "gene")
+leaf_BM_exons <- inner_join(leaf_BM, exons.tx, by = "gene")
+leaf_UM_exons <- inner_join(leaf_UM, exons.tx, by = "gene")
+
+permTS(gam_BM_exons$exons, gam_UM_exons$exons, method='exact.mc')
+
+permTS(leaf_BM_exons$exons, leaf_UM_exons$exons, method = 'exact.mc')
+
+permTS(gam_BM_exons$exons, leaf_BM_exons$exons, method = 'exact.mc')
+
+# To make the plot presentable, we use the biased cross validation method for smoothing 
+# and limit the x-axis to only include genes with up to 25 exons
+
+ggplot() + 
+  geom_density(data = gam_UM_exons, mapping = aes(x = exons), color = "black", fill = "lightblue", alpha = 0.5, bw = "bcv") + 
+  geom_density(data = gam_BM_exons, mapping = aes(x = exons), color = "black", fill = "steelblue3", 
+               alpha = 0.75, bw = "bcv") +
+  geom_density(data = leaf_UM_exons, mapping = aes(x = exons), color = "black", fill = "pink", alpha = 0.5, bw = "bcv") + 
+  geom_density(data = leaf_BM_exons, mapping = aes(x = exons), color = "black", fill = "indianred3", alpha = 0.65, bw = "bcv") +
+    theme_bw() + xlab("Number of Exons") + ylab("Frequency") + xlim(0,30)
+
+ggsave("BM-UM_numExons.pdf", height = 4, width = 6)
+
+
+```
+
+# Compare Expresison Levels 
+
+We will use RPKM values to compare expression levels of BM and UM genes within samples. We cannot compare across samples with RPKM. 
+
+```{r}
+library(edgeR)
+
+## CP1 ##
+
+CP1 <- read.delim("freezing-RNA/v1.1.9/stranded_gene_summary/CP1_2_2v1.1.9.bam-stranded-gene_summary.txt", header = F)
+CP1_counts <- head(CP1, n=-5)
+colnames(CP1_counts) <- c("gene","count")
+
+all_genes$gene <- gsub("ID=","",all_genes$V15) %>% 
+  gsub(";","", .)
+
+CP1_counts_joined <- inner_join(CP1_counts,all_genes, by = "gene" )
+
+rownames(CP1_counts) <- CP1_counts$gene
+
+CP1_counts2 <- CP1_counts %>% 
+  dplyr::select(count)
+
+mat <- as.matrix(CP1_counts2)
+
+CP1_RPKM <- rpkm(y = mat, gene.length = CP1_counts_joined$len)
+
+CP1.df <- as.data.frame(CP1_RPKM)
+
+CP1.df$gene <- row.names(CP1_RPKM)
+colnames(CP1.df) <- c("RPKM", "gene")
+
+CP1_BM_RPKM <- inner_join(gam_BM, CP1.df, by = "gene")
+median(CP1_BM_RPKM$RPKM) # 0.503
+CP1_UM_RPKM <- inner_join(gam_UM, CP1.df, by = "gene")
+median(CP1_UM_RPKM$RPKM) # 6.524
+
+permTS(CP1_BM_RPKM$RPKM, CP1_UM_RPKM$RPKM, method='exact.mc')
+
+ggplot() + geom_density(data = CP1_UM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "lightblue", alpha = 0.5, bw = "bcv") + 
+  geom_density(data = CP1_BM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "dodgerblue4", 
+               alpha = 0.75, bw = "bcv") +
+    theme_bw()  + xlab("RPKM") + ylab("Frequency") + scale_x_log10()
+
+ggplot() + geom_point(data = CP1_BM_RPKM, mapping = aes(x = (methylated_cytosines/total_cytosines), y = RPKM), color = "dodgerblue4", alpha = 0.75) + geom_point(data = CP1_UM_RPKM, mapping = aes(x = (methylated_cytosines/total_cytosines), y = RPKM), color = "lightblue", alpha = 0.5) + scale_y_log10() + theme_bw() + xlab("Proportion CG Methylated")
+
+## CP2 ##
+
+CP2 <- read.delim("freezing-RNA/v1.1.9/stranded_gene_summary/CP2_2_2v1.1.9.bam-stranded-gene_summary.txt", header = F)
+CP2_counts <- head(CP2, n=-5)
+colnames(CP2_counts) <- c("gene","count")
+
+CP2_counts_joined <- inner_join(CP2_counts,all_genes, by = "gene" )
+
+rownames(CP2_counts) <- CP2_counts$gene
+
+CP2_counts2 <- CP2_counts %>% 
+  dplyr::select(count)
+
+mat <- as.matrix(CP2_counts2)
+
+CP2_RPKM <- rpkm(y = mat, gene.length = CP2_counts_joined$len)
+
+CP2.df <- as.data.frame(CP2_RPKM)
+
+CP2.df$gene <- row.names(CP2_RPKM)
+colnames(CP2.df) <- c("RPKM", "gene")
+
+CP2_BM_RPKM <- inner_join(gam_BM, CP2.df, by = "gene")
+median(CP2_BM_RPKM$RPKM) # 0.419
+CP2_UM_RPKM <- inner_join(gam_UM, CP2.df, by = "gene")
+median(CP2_UM_RPKM$RPKM) # 6.026
+
+permTS(CP2_BM_RPKM$RPKM, CP2_UM_RPKM$RPKM, method='exact.mc')
+
+ggplot() + geom_density(data = CP2_UM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "lightblue", alpha = 0.5, bw = "bcv") + 
+  geom_density(data = CP2_BM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "dodgerblue4", 
+               alpha = 0.75, bw = "bcv") +
+    theme_bw()  + xlab("RPKM") + ylab("Frequency") + scale_x_log10()
+
+ggplot() + geom_point(data = CP2_BM_RPKM, mapping = aes(x = (methylated_cytosines/total_cytosines), y = RPKM), color = "dodgerblue4", alpha = 0.75) + geom_point(data = CP2_UM_RPKM, mapping = aes(x = (methylated_cytosines/total_cytosines), y = RPKM), color = "lightblue", alpha = 0.5) + scale_y_log10() + theme_bw() + xlab("Proportion CG Methylated")
+
+## CP3 ##
+
+CP3 <- read.delim("freezing-RNA/v1.1.9/stranded_gene_summary/CP3_3_2v1.1.9.bam-stranded-gene_summary.txt", header = F)
+CP3_counts <- head(CP3, n=-5)
+colnames(CP3_counts) <- c("gene","count")
+
+CP3_counts_joined <- inner_join(CP3_counts,all_genes, by = "gene" )
+
+rownames(CP3_counts) <- CP3_counts$gene
+
+CP3_counts2 <- CP3_counts %>% 
+  dplyr::select(count)
+
+mat <- as.matrix(CP3_counts2)
+
+CP3_RPKM <- rpkm(y = mat, gene.length = CP3_counts_joined$len)
+
+CP3.df <- as.data.frame(CP3_RPKM)
+
+CP3.df$gene <- row.names(CP3_RPKM)
+colnames(CP3.df) <- c("RPKM", "gene")
+
+CP3_BM_RPKM <- inner_join(gam_BM, CP3.df, by = "gene")
+median(CP3_BM_RPKM$RPKM) # 0.480
+CP3_UM_RPKM <- inner_join(gam_UM, CP3.df, by = "gene")
+median(CP3_UM_RPKM$RPKM) # 6.810
+
+permTS(CP3_BM_RPKM$RPKM, CP3_UM_RPKM$RPKM, method='exact.mc')
+
+ggplot() + geom_density(data = CP3_UM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "lightblue", alpha = 0.5, bw = "bcv") + 
+  geom_density(data = CP3_BM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "dodgerblue4", 
+               alpha = 0.75, bw = "bcv") +
+    theme_bw()  + xlab("RPKM") + ylab("Frequency") + scale_x_log10()
+
+ggplot() + geom_point(data = CP3_BM_RPKM, mapping = aes(x = (methylated_cytosines/total_cytosines), y = RPKM), color = "dodgerblue4", alpha = 0.75) + geom_point(data = CP3_UM_RPKM, mapping = aes(x = (methylated_cytosines/total_cytosines), y = RPKM), color = "lightblue", alpha = 0.5) + scale_y_log10() + theme_bw() + xlab("Proportion CG Methylated")
+
+## LEAF TISSUES ##
+
+## CREW2.33L ##
+
+CREW2.33L <- read.delim("freezing-RNA/v1.1.9/stranded_gene_summary/CREW2.33L_2v1.1.9.bam-stranded-gene_summary.txt", header = F)
+CREW2.33L_counts <- head(CREW2.33L, n=-5)
+colnames(CREW2.33L_counts) <- c("gene","count")
+
+#all_genes$gene <- gsub("ID=","",all_genes$V15) %>% 
+#  gsub(";","", .)
+
+CREW2.33L_counts_joined <- inner_join(CREW2.33L_counts,all_genes, by = "gene" )
+
+rownames(CREW2.33L_counts) <- CREW2.33L_counts$gene
+
+CREW2.33L_counts2 <- CREW2.33L_counts %>% 
+  dplyr::select(count)
+
+mat <- as.matrix(CREW2.33L_counts2)
+
+CREW2.33L_RPKM <- rpkm(y = mat, gene.length = CREW2.33L_counts_joined$len)
+
+CREW2.33L.df <- as.data.frame(CREW2.33L_RPKM)
+
+CREW2.33L.df$gene <- row.names(CREW2.33L_RPKM)
+colnames(CREW2.33L.df) <- c("RPKM", "gene")
+
+CREW2.33L_BM_RPKM <- inner_join(leaf_BM, CREW2.33L.df, by = "gene")
+median(CREW2.33L_BM_RPKM$RPKM) # 0.1249
+CREW2.33L_UM_RPKM <- inner_join(leaf_UM, CREW2.33L.df, by = "gene")
+median(CREW2.33L_UM_RPKM$RPKM) # 2.516
+
+permTS(CREW2.33L_BM_RPKM$RPKM, CREW2.33L_UM_RPKM$RPKM, method='exact.mc')
+
+ggplot() + geom_density(data = CREW2.33L_UM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "pink", alpha = 0.5, bw = "bcv") + 
+  geom_density(data = CREW2.33L_BM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "indianred3", 
+               alpha = 0.75, bw = "bcv") +
+    theme_bw()  + xlab("RPKM") + ylab("Frequency") + scale_x_log10()
+
+
+## CREW2.34L ##
+
+CREW2.34L <- read.delim("freezing-RNA/v1.1.9/stranded_gene_summary/CREW2.34L_2v1.1.9.bam-stranded-gene_summary.txt", header = F)
+CREW2.34L_counts <- head(CREW2.34L, n=-5)
+colnames(CREW2.34L_counts) <- c("gene","count")
+
+CREW2.34L_counts_joined <- inner_join(CREW2.34L_counts,all_genes, by = "gene" )
+
+rownames(CREW2.34L_counts) <- CREW2.34L_counts$gene
+
+CREW2.34L_counts2 <- CREW2.34L_counts %>% 
+  dplyr::select(count)
+
+mat <- as.matrix(CREW2.34L_counts2)
+
+CREW2.34L_RPKM <- rpkm(y = mat, gene.length = CREW2.34L_counts_joined$len)
+
+CREW2.34L.df <- as.data.frame(CREW2.34L_RPKM)
+
+CREW2.34L.df$gene <- row.names(CREW2.34L_RPKM)
+colnames(CREW2.34L.df) <- c("RPKM", "gene")
+
+CREW2.34L_BM_RPKM <- inner_join(leaf_BM, CREW2.34L.df, by = "gene")
+median(CREW2.34L_BM_RPKM$RPKM) # 0.131
+CREW2.34L_UM_RPKM <- inner_join(leaf_UM, CREW2.34L.df, by = "gene")
+median(CREW2.34L_UM_RPKM$RPKM) # 2.461
+
+permTS(CREW2.34L_BM_RPKM$RPKM, CREW2.34L_UM_RPKM$RPKM, method='exact.mc')
+
+ggplot() + geom_density(data = CREW2.34L_UM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "pink", alpha = 0.5, bw = "bcv") + 
+  geom_density(data = CREW2.34L_BM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "indianred3", 
+               alpha = 0.75, bw = "bcv") +
+    theme_bw()  + xlab("RPKM") + ylab("Frequency") + scale_x_log10()
+
+
+## CREW3.21L ##
+
+CREW3.21L <- read.delim("freezing-RNA/v1.1.9/stranded_gene_summary/CREW3.21L_2v1.1.9.bam-stranded-gene_summary.txt", header = F)
+CREW3.21L_counts <- head(CREW3.21L, n=-5)
+colnames(CREW3.21L_counts) <- c("gene","count")
+
+CREW3.21L_counts_joined <- inner_join(CREW3.21L_counts,all_genes, by = "gene" )
+
+rownames(CREW3.21L_counts) <- CREW3.21L_counts$gene
+
+CREW3.21L_counts2 <- CREW3.21L_counts %>% 
+  dplyr::select(count)
+
+mat <- as.matrix(CREW3.21L_counts2)
+
+CREW3.21L_RPKM <- rpkm(y = mat, gene.length = CREW3.21L_counts_joined$len)
+
+CREW3.21L.df <- as.data.frame(CREW3.21L_RPKM)
+
+CREW3.21L.df$gene <- row.names(CREW3.21L_RPKM)
+colnames(CREW3.21L.df) <- c("RPKM", "gene")
+
+CREW3.21L_BM_RPKM <- inner_join(leaf_BM, CREW3.21L.df, by = "gene")
+median(CREW3.21L_BM_RPKM$RPKM) # 0.1139
+CREW3.21L_UM_RPKM <- inner_join(leaf_UM, CREW3.21L.df, by = "gene")
+median(CREW3.21L_UM_RPKM$RPKM) # 2.46
+
+permTS(CREW3.21L_BM_RPKM$RPKM, CREW3.21L_UM_RPKM$RPKM, method='exact.mc')
+
+ggplot() + geom_density(data = CREW3.21L_UM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "pink", alpha = 0.5, bw = "bcv") + 
+  geom_density(data = CREW3.21L_BM_RPKM, mapping = aes(x = RPKM), color = "black", fill = "indianred3",
+               alpha = 0.75, bw = "bcv") +
+    theme_bw()  + xlab("RPKM") + ylab("Frequency") + scale_x_log10()
+
+
+CREW2.34L_UM_RPKM$sample <- "CREW2.34"; CREW2.34L_UM_RPKM$tissue <- "leaf"; CREW2.34L_UM_RPKM$type ="UM"
+CREW2.34L_BM_RPKM$sample <- "CREW2.34"; CREW2.34L_BM_RPKM$tissue <- "leaf"; CREW2.34L_BM_RPKM$type = "BM"
+CREW2.33L_UM_RPKM$sample <- "CREW2.33"; CREW2.33L_UM_RPKM$tissue <- "leaf"; CREW2.33L_UM_RPKM$type ="UM"
+CREW2.33L_BM_RPKM$sample <- "CREW2.33"; CREW2.33L_BM_RPKM$tissue <- "leaf"; CREW2.33L_BM_RPKM$type = "BM"
+CREW3.21L_UM_RPKM$sample <- "CREW3.21"; CREW3.21L_UM_RPKM$tissue <- "leaf"; CREW3.21L_UM_RPKM$type ="UM"
+CREW3.21L_BM_RPKM$sample <- "CREW3.21"; CREW3.21L_BM_RPKM$tissue <- "leaf"; CREW3.21L_BM_RPKM$type = "BM"
+
+
+CP1_UM_RPKM$sample <- "CP1"; CP1_UM_RPKM$tissue <- "gametophyte"; CP1_UM_RPKM$type ="UM"
+CP1_BM_RPKM$sample <- "CP1"; CP1_BM_RPKM$tissue <- "gametophyte"; CP1_BM_RPKM$type = "BM"
+CP2_UM_RPKM$sample <- "CP2"; CP2_UM_RPKM$tissue <- "gametophyte"; CP2_UM_RPKM$type ="UM"
+CP2_BM_RPKM$sample <- "CP2"; CP2_BM_RPKM$tissue <- "gametophyte"; CP2_BM_RPKM$type = "BM"
+CP3_UM_RPKM$sample <- "CP3"; CP3_UM_RPKM$tissue <- "gametophyte"; CP3_UM_RPKM$type ="UM"
+CP3_BM_RPKM$sample <- "CP3"; CP3_BM_RPKM$tissue <- "gametophyte"; CP3_BM_RPKM$type = "BM"
+
+df <- rbind.fill(CREW2.34L_BM_RPKM, CREW2.34L_UM_RPKM, CREW2.33L_BM_RPKM, CREW2.33L_UM_RPKM, 
+                 CREW3.21L_UM_RPKM, CREW3.21L_BM_RPKM, CP1_UM_RPKM, CP1_BM_RPKM, 
+                 CP2_UM_RPKM, CP2_BM_RPKM, CP3_UM_RPKM, CP3_BM_RPKM)
+
+ggplot(data = df, mapping = aes(x = tissue, y = RPKM, fill = type)) + geom_boxplot() + 
+  scale_y_log10() + theme_bw() + xlab("Tissue") + theme(legend.position = "none")
+
+ggsave("RPKM_BM-UM.pdf", height = 4, width = 6)
+
+```
+
+```{r}
+library(topGO)
+# Define the gene universe
+geneID2GO <- readMappings(file = "v1.1.9/Braker-GOs.txt")
+all_genes <- names(geneID2GO)
+
+########################################
+###     BM Genes in Gametophyte      ###
+########################################
+
+gam_BM_genes <- gam_BM_exons$gene
+
+geneList <- factor(as.integer(all_genes %in% gam_BM_genes))
+names(geneList) <- all_genes
+
+### Biological Process ###
+
+gam_BM_BP <- new("topGOdata", description = "body-methylated genes in the gametophyte", ontology = "BP",
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_BP <- sigGenes(gam_BM_BP)
+str(sig_genes_BP)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(gam_BM_BP)
+#1106
+#Run Fisher's Exact Test for Biological Processes 
+#Note that this does not correct for multiple comparisons 
+BP_result_Fisher <- runTest(gam_BM_BP, algorithm = "classic", statistic = "fisher")
+BP_result_Fisher
+#48 terms have raw p<0.01
+BP_list <- usedGO(object = gam_BM_BP)
+BP_fisher_only <- GenTable(gam_BM_BP, classicFisher = BP_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(BP_list))
+BP_corrected <- p.adjust(BP_fisher_only$classicFisher, method = "fdr")
+BP_corrected <- as.data.frame(BP_corrected)
+BP_corrected_significant <- BP_corrected %>% 
+  filter(BP_corrected < 0.05)
+# 15 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+BP_fisher_top <- BP_fisher_only[1:15,] 
+showSigOfNodes(gam_BM_BP, score(BP_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+printGraph(upreg_BP, BP_result_Fisher, firstSigNodes = 10, fn.prefix = "BM_genes_gametophyte_BP", useInfo = 'all')
+
+BP_corrected$classicFisher = BP_fisher_only$classicFisher
+BP_table <- dplyr::left_join(BP_fisher_top, BP_corrected)
+BP_table_uni <- unique(BP_table)
+write.csv(BP_table_uni, file = "BM_genes_gametophyte_BP_corrected.csv") 
+
+### Cellular Component ###
+
+gam_BM_CC <- new("topGOdata", description = "body-methylated genes in gametophyte", ontology = "CC", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_CC <- sigGenes(gam_BM_CC)
+str(sig_genes_CC)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(gam_BM_CC)
+#629
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+CC_result_Fisher <- runTest(gam_BM_CC, algorithm = "classic", statistic = "fisher")
+CC_result_Fisher
+#10 terms have raw p<0.01
+CC_list <- usedGO(object = gam_BM_CC)
+CC_fisher_only <- GenTable(gam_BM_CC, classicFisher = CC_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(CC_list))
+CC_corrected <- p.adjust(CC_fisher_only$classicFisher, method = "fdr")
+CC_corrected <- as.data.frame(CC_corrected)
+CC_corrected_significant <- CC_corrected %>% 
+  filter(CC_corrected < 0.05)
+#0 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+#CC_fisher_top <- CC_fisher_only[1:2,] 
+#showSigOfNodes(gam_upreg_CC, score(CC_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+#printGraph(gam_upreg_CC, CC_result_Fisher, firstSigNodes = 10, fn.prefix = "gam_upreg_CC", useInfo = 'all')
+
+#CC_corrected$classicFisher = CC_fisher_only$classicFisher
+#CC_table <- dplyr::left_join(CC_fisher_top, CC_corrected)
+#CC_table_uni <- unique(CC_table)
+#write.csv(CC_table_uni, file = "gam_upreg_CC_corrected.csv") 
+
+### Molecular Function ###
+
+gam_BM_MF <- new("topGOdata", description = "body-methylated genes gametophyte", ontology = "MF", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_MF <- sigGenes(gam_BM_MF)
+str(sig_genes_MF)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(gam_BM_MF)
+#1811
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+MF_result_Fisher <- runTest(gam_BM_MF, algorithm = "classic", statistic = "fisher")
+MF_result_Fisher
+#33 terms have raw p<0.01
+MF_list <- usedGO(object = gam_BM_MF)
+MF_fisher_only <- GenTable(gam_BM_MF, classicFisher = MF_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(MF_list))
+MF_corrected <- p.adjust(MF_fisher_only$classicFisher, method = "fdr")
+MF_corrected <- as.data.frame(MF_corrected)
+MF_corrected_significant <- MF_corrected %>% 
+  filter(MF_corrected < 0.05)
+# 8 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+MF_fisher_top <- MF_fisher_only[1:8,] 
+showSigOfNodes(gam_BM_MF, score(MF_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+printGraph(upreg_MF, MF_result_Fisher, firstSigNodes = 10, fn.prefix = "gam_upreg_MF", useInfo = 'all')
+
+MF_corrected$classicFisher = MF_fisher_only$classicFisher
+MF_table <- dplyr::left_join(MF_fisher_top, MF_corrected)
+MF_table_uni <- unique(MF_table)
+write.csv(MF_table_uni, file = "BM_gam_MF_corrected.csv") 
+
+
+
+########################################
+###         BM Genes in Leaf         ###
+########################################
+
+leaf_BM_genes <- leaf_BM_exons$gene
+
+geneList <- factor(as.integer(all_genes %in% leaf_BM_genes))
+names(geneList) <- all_genes
+
+### Biological Process ###
+
+leaf_BM_BP <- new("topGOdata", description = "body-methylated genes in the leaf", ontology = "BP",
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_BP <- sigGenes(leaf_BM_BP)
+str(sig_genes_BP)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(leaf_BM_BP)
+#107
+#Run Fisher's Exact Test for Biological Processes 
+#Note that this does not correct for multiple comparisons 
+BP_result_Fisher <- runTest(leaf_BM_BP, algorithm = "classic", statistic = "fisher")
+BP_result_Fisher
+#26 terms have raw p<0.01
+BP_list <- usedGO(object = leaf_BM_BP)
+BP_fisher_only <- GenTable(leaf_BM_BP, classicFisher = BP_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(BP_list))
+BP_corrected <- p.adjust(BP_fisher_only$classicFisher, method = "fdr")
+BP_corrected <- as.data.frame(BP_corrected)
+BP_corrected_significant <- BP_corrected %>% 
+  filter(BP_corrected < 0.05)
+# 4 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+BP_fisher_top <- BP_fisher_only[1:4,] 
+showSigOfNodes(leaf_BM_BP, score(BP_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+printGraph(leaf_BM_BP, BP_result_Fisher, firstSigNodes = 10, fn.prefix = "BM_genes_leaf_BP", useInfo = 'all')
+
+BP_corrected$classicFisher = BP_fisher_only$classicFisher
+BP_table <- dplyr::left_join(BP_fisher_top, BP_corrected)
+BP_table_uni <- unique(BP_table)
+write.csv(BP_table_uni, file = "BM_genes_leaf_BP_corrected.csv") 
+
+### Cellular Component ###
+
+leaf_BM_CC <- new("topGOdata", description = "body-methylated genes in leaf", ontology = "CC", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_CC <- sigGenes(leaf_BM_CC)
+str(sig_genes_CC)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(leaf_BM_CC)
+#54
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+CC_result_Fisher <- runTest(leaf_BM_CC, algorithm = "classic", statistic = "fisher")
+CC_result_Fisher
+#16 terms have raw p<0.01
+CC_list <- usedGO(object = leaf_BM_CC)
+CC_fisher_only <- GenTable(leaf_BM_CC, classicFisher = CC_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(CC_list))
+CC_corrected <- p.adjust(CC_fisher_only$classicFisher, method = "fdr")
+CC_corrected <- as.data.frame(CC_corrected)
+CC_corrected_significant <- CC_corrected %>% 
+  filter(CC_corrected < 0.05)
+#0 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+#CC_fisher_top <- CC_fisher_only[1:2,] 
+#showSigOfNodes(gam_upreg_CC, score(CC_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+#printGraph(gam_upreg_CC, CC_result_Fisher, firstSigNodes = 10, fn.prefix = "gam_upreg_CC", useInfo = 'all')
+
+#CC_corrected$classicFisher = CC_fisher_only$classicFisher
+#CC_table <- dplyr::left_join(CC_fisher_top, CC_corrected)
+#CC_table_uni <- unique(CC_table)
+#write.csv(CC_table_uni, file = "gam_upreg_CC_corrected.csv") 
+
+### Molecular Function ###
+
+leaf_BM_MF <- new("topGOdata", description = "body-methylated genes leaf", ontology = "MF", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_MF <- sigGenes(leaf_BM_MF)
+str(sig_genes_MF)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(leaf_BM_MF)
+#156
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+MF_result_Fisher <- runTest(leaf_BM_MF, algorithm = "classic", statistic = "fisher")
+MF_result_Fisher
+#5 terms have raw p<0.01
+MF_list <- usedGO(object = leaf_BM_MF)
+MF_fisher_only <- GenTable(leaf_BM_MF, classicFisher = MF_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(MF_list))
+MF_corrected <- p.adjust(MF_fisher_only$classicFisher, method = "fdr")
+MF_corrected <- as.data.frame(MF_corrected)
+MF_corrected_significant <- MF_corrected %>% 
+  filter(MF_corrected < 0.05)
+# 0 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+#MF_fisher_top <- MF_fisher_only[1:8,] 
+#showSigOfNodes(gam_BM_MF, score(MF_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+#printGraph(upreg_MF, MF_result_Fisher, firstSigNodes = 10, fn.prefix = "gam_upreg_MF", useInfo = 'all')
+#MF_corrected$classicFisher = MF_fisher_only$classicFisher
+#MF_table <- dplyr::left_join(MF_fisher_top, MF_corrected)
+#MF_table_uni <- unique(MF_table)
+#write.csv(MF_table_uni, file = "BM_gam_MF_corrected.csv") 
+```

@@ -1,0 +1,364 @@
+---
+title: "VisualizeMethylation"
+author: "Jessie Pelosi"
+date: "2024-11-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+library(RColorBrewer)
+```
+
+# Methylation Analysis of Gametophyte/Sporophyte Tissues
+
+## Global methylation patterns
+
+Let's start by looking at the levels of methylation in the three different contexts (CG, CHG, CHH; where H = A,T, or C) across the entire genome.  
+
+```{r fig.align='center'}
+LygodiumGlobal <- read.delim("methylation/Lygodium/v1.1.9/Lygo_GlobalMeth.tab")
+LygodiumGlobalMelt <- melt(LygodiumGlobal)
+glob <- ggplot(data = LygodiumGlobalMelt, mapping = aes(x= Sample, y=value, fill = Tissue)) + geom_col()+
+  facet_wrap(~variable) + theme_bw() + theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+  scale_fill_manual(values = c("Gametophyte" = "steelblue3", "Leaf" = "indianred3"))
+glob
+
+LYMI_G1 <- LygodiumGlobalMelt %>% 
+  group_by(variable, Tissue, Sample) %>% 
+  summarize(methylation_level = mean(value))
+
+Global.Sum <- LygodiumGlobalMelt %>% 
+  group_by(variable, Tissue) %>% 
+  select(-Sample) %>% 
+  summarize(methylation_level = mean(value))
+
+knitr::kable(Global.Sum)
+
+```
+## Methylation patterns across chromosomes
+
+We will pick one chromosome and summarize methylation across the entire chromosome from all six samples. 
+
+
+```{r}
+
+chrm_methylation <- read.delim("methylation/Lygodium/v1.1.9/all_chrms_MethGeno_all.txt")
+
+chrm <- chrm_methylation %>% 
+  dplyr::filter(chr == "scaffold_4") %>% 
+  mutate(bin_mid = (end-stt/2)) %>% 
+  group_by(bin_mid, Context, sample_name) %>% 
+  summarize(med_methylation_level = mean(Methylation_level)) %>% 
+  mutate(tissue = case_when(
+    sample_name == "LYMI-G1" ~ "gametophyte",
+    sample_name == "LYMI-G2" ~ "gametophyte",
+    sample_name == "LYMI-G4" ~ "gametophyte",
+    sample_name == "LYMI-S1" ~ "leaf", 
+    sample_name == "LYMI-S2" ~ "leaf", 
+    sample_name == "LYMI-S3" ~ "leaf"))
+    
+ggplot(data = chrm, mapping = aes(x = bin_mid, y = med_methylation_level, color = tissue)) + geom_line(aes(linetype = Context), alpha = 0.85) +
+  ylim(c(0,1)) + theme_bw() + scale_color_manual(values = c("gametophyte" = "steelblue3", "leaf" = "indianred3"))
+
+ggplot(data = chrm, mapping = aes(x = bin_mid, y = med_methylation_level)) + geom_line(aes(color = Context), alpha = 0.85) +
+  ylim(c(0,1)) + theme_bw() + scale_color_manual(values = c("CG" = "#fc8961", "CHG" = "#b73779", "CHH" = "#51127c")) + xlab("Position on Chromosome (Mb)") + ylab("Methylation Level") + theme(legend.position = "none")
+
+ggsave("Lygodium_methylation_over_chromosome.pdf", height = 5, width =6.5)
+
+```
+
+## Methylation patterns in genes
+
+Let's look at the levels of each methylation context in genes and how methylation is distributed along gene bodies. We will split this up into the different parts of each gene: total gene body, exon, and intron.
+
+
+```{r fig.height=5, fig.width=5, fig.align='center'}
+gene <- read.delim("methylation/Lygodium/v1.1.9/Gene_ALL_MethOverRegion.txt")
+
+gene.summary <- gene %>% 
+  group_by(region, bin_num, Context, Tissue) %>% 
+  summarize(avg_methylation = mean(Methylation_level))
+
+p <- ggplot(data =gene.summary, mapping = aes(x =bin_num, y = avg_methylation, col=Tissue)) +
+  geom_line(aes(linetype=Context), linewidth = 0.75, alpha = 0.85)
+min <- min(gene.summary$bin_num)  ## by default the lowest value is -19
+max <- abs(max(gene.summary$bin_num))
+flank = 2000
+pn = p + scale_x_continuous(breaks=c(min, max), labels=c(-flank, flank));
+pn <- pn + theme(legend.title=element_blank(), legend.position = "none")
+pn = pn + geom_vline(xintercept = c(1, max + min - 1), linetype = "dashed")
+pn = pn + expand_limits(y=c(0, 1)) + 
+  scale_color_manual(values = c("Gametophyte" = "steelblue3", "Leaf" = "indianred3")) + 
+  theme_bw() + ylab("") + xlab("")
+pn
+
+ggsave("Lygodium_methylation_over_gene_body.pdf", pn, height = 5, width =5)
+
+
+#exon
+
+exon <- read.delim("methylation/Lygodium/v1.1.9/Exon_ALL_MethOverRegion.txt")
+
+exon.summary <- exon %>% 
+  group_by(region, bin_num, Context, Tissue) %>% 
+  summarize(avg_methylation = mean(Methylation_level))
+
+p <- ggplot(data =exon.summary, mapping = aes(x =bin_num, y = avg_methylation, col=Tissue)) +
+  geom_line(aes(linetype=Context), linewidth = 0.75, alpha = 0.85)
+min <- min(exon.summary$bin_num)  ## by default the lowest value is -19
+max <- abs(max(exon.summary$bin_num))
+flank = 2000
+pn = p + scale_x_continuous(breaks=c(min, max), labels=c(-flank, flank));
+pn <- pn + theme(legend.title=element_blank())
+pn = pn + geom_vline(xintercept = c(1, max + min - 1), linetype = "dashed")
+pn = pn + expand_limits(y=c(0, 1)) + 
+  scale_color_manual(values = c("Gametophyte" = "steelblue3", "Leaf" = "indianred3")) + 
+  theme_bw() + ylab("Methylation Level") + xlab("")
+pn
+
+ggsave("Lygodium_methylation_over_exon.pdf", pn, height = 5, width =5)
+
+
+#intron
+
+intron <- read.delim("methylation/Lygodium/v1.1.9/Intron_ALL_MethOverRegion.txt")
+
+intron.summary <- intron %>% 
+  group_by(region, bin_num, Context, Tissue) %>% 
+  summarize(avg_methylation = mean(Methylation_level))
+
+p <- ggplot(data =intron.summary, mapping = aes(x =bin_num, y = avg_methylation, col=Tissue)) +
+  geom_line(aes(linetype=Context), linewidth = 0.75, alpha = 0.85)
+min <- min(intron.summary$bin_num)  ## by default the lowest value is -19
+max <- abs(max(intron.summary$bin_num))
+flank = 2000
+pn = p + scale_x_continuous(breaks=c(min, max), labels=c(-flank, flank));
+pn <- pn + theme(legend.title=element_blank())
+pn = pn + geom_vline(xintercept = c(1, max + min - 1), linetype = "dashed")
+pn = pn + expand_limits(y=c(0, 1)) + 
+  scale_color_manual(values = c("Gametophyte" = "steelblue3", "Leaf" = "indianred3")) + 
+  theme_bw() + ylab("Methylation Level") + xlab("")
+pn
+
+ggsave("Lygodium_methylation_over_intron.pdf", pn, height = 5, width =5)
+
+
+```
+
+## Methylation patterns over repeats
+
+Let's look at the levels of each methylation context in repeats and how methylation is distributed along repeats.
+
+
+```{r}
+#retrotansposon
+
+retro <- read.delim("methylation/Lygodium/v1.1.9/Repeat_ALL_MethOverRegion.txt")
+
+retro.summary <- retro %>% 
+  group_by(region, bin_num, Context, Tissue) %>% 
+  summarize(avg_methylation = mean(Methylation_level))
+
+p <- ggplot(data =retro.summary, mapping = aes(x =bin_num, y = avg_methylation, col=Tissue)) +
+  geom_line(aes(linetype=Context), linewidth = 0.75, alpha = 0.85)
+min <- min(retro.summary$bin_num)  ## by default the lowest value is -19
+max <- abs(max(retro.summary$bin_num))
+flank = 2000
+pn = p + scale_x_continuous(breaks=c(min, max), labels=c(-flank, flank));
+pn <- pn + theme(legend.title=element_blank())
+pn = pn + geom_vline(xintercept = c(1, max + min - 1), linetype = "dashed")
+pn = pn + expand_limits(y=c(0, 1)) + 
+  scale_color_manual(values = c("Gametophyte" = "steelblue3", "Leaf" = "indianred3")) + 
+  theme_bw() + ylab("Methylation Level") + xlab("")
+pn
+
+ggsave("Lygodium_methylation_over_retrotransposon.pdf", pn, height = 5, width =5)
+
+```
+
+## Differentially methylated regions 
+
+
+
+```{r}
+# Hypermethylated: 
+
+hyper <- read.delim("methylation/Lygodium/v1.1.9/sites_hyperTSS-Lygodium_1Nov2024.txt", sep ="")
+hyper.10kb <- hyper %>% 
+  filter(dist.to.feature < 10000 & dist.to.feature > -10000)
+
+##############################################
+### GO ENRICHMENT OF HYPERMETHYLATED SITES ###
+##############################################
+
+library(topGO)
+# Define the gene universe
+geneID2GO <- readMappings(file = "v1.1.9/Braker-GOs.txt")
+all_genes <- names(geneID2GO)
+
+hyper.10kb.genes <- hyper.10kb$feature.name
+geneList <- factor(as.integer(all_genes %in% hyper.10kb.genes))
+names(geneList) <- all_genes
+
+### Biological Process ###
+
+hyper_BP <- new("topGOdata", description = "hypermethylated genes", ontology = "BP", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_BP <- sigGenes(hyper_BP)
+str(sig_genes_BP)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(hyper_BP)
+#423
+#Run Fisher's Exact Test for Biological Processes 
+#Note that this does not correct for multiple comparisons 
+BP_result_Fisher <- runTest(hyper_BP, algorithm = "classic", statistic = "fisher")
+BP_result_Fisher
+#2 terms have raw p<0.01
+BP_list <- usedGO(object = hyper_BP)
+BP_fisher_only <- GenTable(hyper_BP, classicFisher = BP_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(BP_list))
+BP_corrected <- p.adjust(BP_fisher_only$classicFisher, method = "fdr")
+BP_corrected <- as.data.frame(BP_corrected)
+BP_corrected_significant <- BP_corrected %>% 
+  filter(BP_corrected < 0.05)
+# 0 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+
+### Cellular Component ###
+
+hyper_CC <- new("topGOdata", description = "hypermethylated genes", ontology = "CC", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_CC <- sigGenes(hyper_CC)
+str(sig_genes_CC)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(upreg_CC)
+#208
+#Run Fisher's Exact Test for Cellular Component, does not correct for multiple comparisons 
+CC_result_Fisher <- runTest(hyper_CC, algorithm = "classic", statistic = "fisher")
+CC_result_Fisher
+#0 terms have raw p<0.01
+CC_list <- usedGO(object = hyper_CC)
+CC_fisher_only <- GenTable(hyper_CC, classicFisher = CC_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(CC_list))
+CC_corrected <- p.adjust(CC_fisher_only$classicFisher, method = "fdr")
+CC_corrected <- as.data.frame(CC_corrected)
+CC_corrected_significant <- CC_corrected %>% 
+  filter(CC_corrected < 0.05)
+#0 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+
+### Molecular Function ###
+
+hyper_MF <- new("topGOdata", description = "hypermethylated gametophyte", ontology = "MF", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_MF <- sigGenes(hyper_MF)
+str(sig_genes_MF)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(hyper_MF)
+#679
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+MF_result_Fisher <- runTest(hyper_MF, algorithm = "classic", statistic = "fisher")
+MF_result_Fisher
+#1 terms have raw p<0.01
+MF_list <- usedGO(object = hyper_MF)
+MF_fisher_only <- GenTable(hyper_MF, classicFisher = MF_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(MF_list))
+MF_corrected <- p.adjust(MF_fisher_only$classicFisher, method = "fdr")
+MF_corrected <- as.data.frame(MF_corrected)
+MF_corrected_significant <- MF_corrected %>% 
+  filter(MF_corrected < 0.05)
+# 0 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+
+##########################################
+### Downregulated Genes in Gametophyte ###
+##########################################
+
+hypo <- read.delim("methylation/Lygodium/v1.1.9/sites_hypoTSS-Lygodium_1Nov2024.txt", sep ="")
+hypo.10kb <- hypo %>% 
+  filter(dist.to.feature < 10000 & dist.to.feature > -10000)
+
+hypo.10kb.genes <- hypo.10kb$feature.name
+geneList <- factor(as.integer(all_genes %in% hypo.10kb.genes))
+names(geneList) <- all_genes
+
+### Biological Process ###
+hypo_BP <- new("topGOdata", description = "hypomethylated genes", ontology = "BP", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_BP <- sigGenes(hypo_BP)
+str(sig_genes_BP)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(hypo_BP)
+#472
+#Run Fisher's Exact Test for Biological Processes 
+#Note that this does not correct for multiple comparisons 
+BP_result_Fisher <- runTest(hypo_BP, algorithm = "classic", statistic = "fisher")
+BP_result_Fisher
+#6 terms have raw p<0.01
+BP_list <- usedGO(object = hypo_BP)
+BP_fisher_only <- GenTable(hypo_BP, classicFisher = BP_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(BP_list))
+BP_corrected <- p.adjust(BP_fisher_only$classicFisher, method = "fdr")
+BP_corrected <- as.data.frame(BP_corrected)
+BP_corrected_significant <- BP_corrected %>% 
+  filter(BP_corrected < 0.05)
+#0 terms are significant after mult comparisons, FDR, P< 0.05
+
+### Cellular Component ###
+hypo_CC <- new("topGOdata", description = "hypomethylated gene", ontology = "CC", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_CC <- sigGenes(hypo_CC)
+str(sig_genes_CC)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(hypo_CC)
+#215
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+CC_result_Fisher <- runTest(hypo_CC, algorithm = "classic", statistic = "fisher")
+CC_result_Fisher
+#0 terms have raw p<0.01
+CC_list <- usedGO(object = hypo_CC)
+CC_fisher_only <- GenTable(hypo_CC, classicFisher = CC_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(CC_list))
+CC_corrected <- p.adjust(CC_fisher_only$classicFisher, method = "fdr")
+CC_corrected <- as.data.frame(CC_corrected)
+CC_corrected_significant <- CC_corrected %>% 
+  filter(CC_corrected < 0.05)
+#0 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+
+### Molecular Function ###
+hypo_MF <- new("topGOdata", description = "hypomethylated genes", ontology = "MF", 
+                    allGenes = geneList, annot = annFUN.gene2GO, gene2GO = geneID2GO)
+#Review significantly enriched genes  
+sig_genes_MF <- sigGenes(hypo_MF)
+str(sig_genes_MF)
+#Number of significantly enriched genes for Biological Processes 
+numSigGenes(hypo_MF)
+#754
+#Run Fisher's Exact Test for Biological Processes, does not correct for multiple comparisons 
+MF_result_Fisher <- runTest(hypo_MF, algorithm = "classic", statistic = "fisher")
+MF_result_Fisher
+#11 terms have raw p<0.01
+MF_list <- usedGO(object = hypo_MF)
+MF_fisher_only <- GenTable(hypo_MF, classicFisher = MF_result_Fisher, orderBy = "classicFisher", 
+                           ranksOf = "classicFisher", topNodes = length(MF_list))
+MF_corrected <- p.adjust(MF_fisher_only$classicFisher, method = "fdr")
+MF_corrected <- as.data.frame(MF_corrected)
+MF_corrected_significant <- MF_corrected %>% 
+  filter(MF_corrected < 0.05)
+#3 terms significant after correcting for multiple comparisons, FDR, P < 0.05
+MF_fisher_top <- MF_fisher_only[1:3,] 
+showSigOfNodes(hypo_MF, score(MF_result_Fisher), firstSigNodes = 10, useInfo = 'all')
+printGraph(hypo_MF, MF_result_Fisher, firstSigNodes = 10, fn.prefix = "hypomethyalted_MF", useInfo = 'all')
+
+MF_corrected$classicFisher = MF_fisher_only$classicFisher
+MF_table <- dplyr::left_join(MF_fisher_top, MF_corrected)
+MF_table_uni <- unique(MF_table)
+write.csv(MF_table_uni, file = "hypomethylated_MF_corrected.csv") 
+
+```

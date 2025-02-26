@@ -42,29 +42,25 @@ minimap2 -k8g -cx ava-ont -k25 -w17 -e200 -r150 -m4000 -z200 -t64 --dual=yes all
 herro inference --read-alns ./batch -m ./model_v0.1.pt -b 128 all_reads_filt.fastq.gz all_reads_filt_HERRO.fasta
 ```
 
-We used the corrected reads as input to hifiasm vXX. 
+We used the corrected reads as input to hifiasm v0.19.9. 
 ```
 hifiasm -o LM_v0.1.9 -t 32 all_reads_filt_HERRO.fasta
 ```
 
-The draft assemblies were then scaffolded with HiC data. 
+The draft assembly of v0.1.9 was then scaffolded with HiC data using YaHS. 
 ```
-juicer.sh -z ./references/LMv0.1.8b.medaka1.pilon1.fasta -s none -p references/chrom_sizes.txt --assembly
-./yahs references/LMv0.1.8b.medaka1.pilon1.fasta all_merged_dedup_LYMIv0.1.8c.bam
-./yahs/juicer pre -a -o out_JBAT yahs.out.bin yahs.out_scaffolds_final.agp references/LMv0.1.8b.medaka1.pilon1.fasta.fai >out_JBAT.log 2>&1
+yahs references/LMv0.1.9.bp.p_ctg.fa all_merged_dedup_LYMIv0.1.9.bam
+yahs/juicer pre -a -o out_JBAT yahs.out.bin yahs.out_scaffolds_final.agp references/LM_v0.1.9.bp.p_ctg.fa.fai >out_JBAT.log 2>&1
 sort -k2,2d -k6,6d -T ./ --parallel=8 -S32G | awk 'NF' > alignments_sorted.txt.part
-java -jar -Xmx96G ./scripts/juicer_tools.1.9.9_jcuda.0.8.jar pre out_JBAT.txt out_JBAT.hic <(echo "assembly 1173944728")
+java -jar -Xmx96G ./scripts/juicer_tools.1.9.9_jcuda.0.8.jar pre out_JBAT.txt out_JBAT.hic <(echo "assembly 1189942806")
 ```
 Import HiC matrix into Juicebox Assembly Tools and manually edit as necessary (e.g., misjoins) and then finalize the assembly with Juicer. 
 ```
-juicer post -o out_JBAT out_JBAT.review.assembly out_JBAT.liftover.agp references/LMv0.1.8b.medaka1.pilon1.fasta
+juicer post -o out_JBAT out_JBAT.review.assembly out_JBAT.liftover.agp references/LMv0.1.9.bp.p_ctg.fa
 ```
-This yields our scaffolded assembly! To generate subsets of this assembly based on minimum scaffold length, etc. we used SeqKit. 
-```
-seqkit seq -m 10000 out_JBAT.assembly > LMv1.1.8_m10000.fasta
-seqkit grep -f chrms.txt out_JBAT.assembly > LMv1.1.8_chrms.fasta
-seqkit stats *.fasta -a
-```
+This yields our scaffolded assembly. 
+
+Possible contamination was removed with NCBI's foreign contaminant filter. 
 
 # Annotation
 
@@ -76,6 +72,12 @@ RepeatModeler v2.0 was used to generate a species-specific repeat library for th
 BuildDatabase -name <db-name> <assembly fasta>
 RepeatModeler -database <db-name> -pa 96 -LTRStruct
 RepeatMasker -pa 96 -lib <RepeatModeler library> <assembly fasta> -no_is -norna -gff -a --xsmall
+```
+
+To identify telomeric repeats, we ran tidk v0.2.14. 
+```
+tidk search --string AAACCCT Lygodium_microphyllum_v1.1.9.chrm.fa
+tidk plot --tsv tidk_v1.1.9_telomeric_repeat_windows.tsv
 ```
 
 ### Protein Evidence 
@@ -131,3 +133,8 @@ We than ran BUSCO on the longest isoform proteome:
 busco -i braker.longest.aa -m protein -l viridiplantae --out braker.longest.busco -f
 ```
 
+InterProScan v5.68-100.0 and EggNogMapper v2.1.12 against eggNOG Viridiplantae database v5.0.2 were used to generate functional annotations for the predicted genes. 
+```
+interproscan.sh --output-dir ${braker}/interproscan --cpu 16 --goterms --input $braker/braker.noast.aa
+emapper.py -m diamond -i $PROT -o $OUT --tax_scope Viridiplantae --cpu 16
+```

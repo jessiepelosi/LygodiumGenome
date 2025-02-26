@@ -1,15 +1,6 @@
-# Methylation Analyses
+# DNA Methylation Analyses
 
-Genome assemblies and raw bisulfite sequencing reads were downloaded for the following taxa: 
-
-| Taxon                    | Lineage   | Annotation     | Accession (Gametophyte/Sporophyte) |References                             | 
-| ------------------------ | --------- | -------------- |----------------------------------- | --------------------------------------|
-|<i>Chlamydomonas reinhardtii</i>| Green Algae| v5.6    | SRR1045037-8/SRR2051061-2          | Lopez et al. 2015 |
-| <i>Marchantia polymorpha | Liverwort | v3.1           | SRR5314027-38/SRR5314015-20        | Schmid et al. 2018                    |
-| <i>Arabidopsis thaliana  | Eudicot   | TAIR10.1       | SRR516180/SRR12737894-5            | Hsieh et al. 2016, Halter et al. 2021 |
-| <i>Oryza sativa          | Monocot   | v7.0           | SRR8594859/SRR9637033-6            | Kim et al. 2019, Cui et al. 2021      |
-  
-Raw reads were trimmed with Trimmomatic v0.39. Most reads were PE, but some were SE and the command was adjusted as needed. 
+Raw reads were trimmed with Trimmomatic v0.39.  
 ```
 trimmomatic PE [accession number]_1.fastq [accession number]_2.fastq [accession number]_1P.fastq [accession number]_1U.fastq [accession number]_2P.fastq [accession number]_2U.fastq ILLUMINACLIP:TruSeq3-PE.fa:2:30:10 ILLUMINACLIP:TruSeq2-PE.fa:2:30:10 MINLEN:35 HEADCROP:5
 ```
@@ -81,7 +72,7 @@ Gene body methylation determined using the probabalistic approach described by T
 
 
 # Methylation from Oxford Nanopore Reads 
-Use modified basecalling models with dorado v0.3.3.
+Use modified basecalling models with dorado v0.3.3. Note that is not presented in the publication, but could be useful to others. 
 ```
 dorado basecaller dna_r10.4.1_e8.2_400bps_sup@v4.2.0 ${POD_DIR} --modified-bases 5mC_5hmC > ${OUTBAM}
 dorado basecaller dna_r10.4.1_e8.2_400bps_sup@v4.2.0 ${POD_DIR} --modified-bases 6mA > ${OUTBAM}

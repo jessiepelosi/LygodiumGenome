@@ -20,6 +20,6 @@ This repository is divided in the directories:
 * University of Florida Department of Biology Mildred Mason Griffith Botany Grant & Michael May Dissertation Fellowship to J.A. Pelosi
 * Botanical Society of America J.S. Karling Graduate Student Research Award to J.A. Pelosi
 * USDA NIFA Postdoctoral Fellowship #2024-67012-43394 to J.A. Pelosi
-* NFS ISO #1754911/2310485 to E.B. Sessa
+* NSF ISO #1754911/2310485 to E.B. Sessa
 * USDA NIFA Predoctoral Fellowhip #2024-67011-43011to A.J. Dant
 * USDA NIFA Award #2023-67013-40169 to K.M. Dlugosch

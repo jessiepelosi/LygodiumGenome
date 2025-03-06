@@ -8,7 +8,7 @@ Analyses of the <i>Lygodium microphyllum</i> genome as presented in the paper:
 All data for this project is publicly available from NCBI BioProject PRJNA1157352 and 10KP: https://db.cngb.org/search/organism/148566/, and genome assembly at NCBI accession JBLQGR000000000. 
 
 This repository is divided in the directories: 
-1. Genome Data
+1. [Genome Data](https://github.com/jessiepelosi/LygodiumGenome/tree/main/GenomeData)
 2. [Assembly and Annotation](https://github.com/jessiepelosi/LygodiumGenome/tree/main/assembly_annotation)
 3. [Methylation](https://github.com/jessiepelosi/LygodiumGenome/tree/main/methylation)
 4. [Transcriptome](https://github.com/jessiepelosi/LygodiumGenome/tree/main/transcriptome)

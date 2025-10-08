@@ -5,7 +5,7 @@ Analyses of the <i>Lygodium microphyllum</i> genome as presented in the paper:
 >
 >Jessie A. Pelosi, Ruth Davenport, Li-Yaung Kuo, Levi N. Gray, Anthony J. Dant, Emily H. Kim, Fay-Wei Li, Katrina M. Dlugosch, Trevor J. Krabbenhoft, W. Brad Barbazuk, and Emily B. Sessa. 
 
-All data for this project is publicly available from NCBI BioProject PRJNA1157352 and 10KP: https://db.cngb.org/search/organism/148566/, and genome assembly at NCBI accession JBLQGR000000000. 
+All data for this project is publicly available from NCBI BioProject PRJNA1157352 and 10KP: https://db.cngb.org/search/organism/148566/, and genome assembly at NCBI accession JBLQGR000000000. The assembly and annotation files are also available at [https://zenodo.org/records/17296295. ](https://doi.org/10.5281/zenodo.17296294). 
 
 This repository is divided in the directories: 
 1. [Genome Data](https://github.com/jessiepelosi/LygodiumGenome/tree/main/GenomeData)
